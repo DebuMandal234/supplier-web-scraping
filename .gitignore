@@ -1,0 +1,16 @@
+# secrets - never commit
+.env
+service_account.json
+
+# local data / output
+data/
+*.xlsx
+~$*
+*.tmp
+
+# python / tools
+__pycache__/
+*.pyc
+.venv/
+venv/
+test_flair.bat

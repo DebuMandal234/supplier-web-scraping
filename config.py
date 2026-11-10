@@ -5,6 +5,15 @@ from dotenv import load_dotenv
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"))   # works from any folder (e.g. Windows Task Scheduler)
 
+# Optional local file with extra settings (e.g. Shopify credentials). Used only for keys that are EMPTY or
+# missing in .env, so a value you type in .env always wins. Never on GitHub.
+LOCAL_SETTINGS = os.path.join(BASE_DIR, "local_settings.txt")
+if os.path.exists(LOCAL_SETTINGS):
+    from dotenv import dotenv_values
+    for _k, _v in dotenv_values(LOCAL_SETTINGS).items():
+        if _v and not os.getenv(_k, "").strip():
+            os.environ[_k] = _v
+
 SUPPLIERS = ["beehive", "birlea", "heartlands", "julian_bowen", "flair"]
 SUPPLIER_NAMES = {  # name shown in Shopify (vendor tag + collection)
     "beehive": "Beehive", "birlea": "Birlea", "heartlands": "Heartlands",

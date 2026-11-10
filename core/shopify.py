@@ -23,6 +23,7 @@ import requests
 
 import config
 from core.payload import body_html
+from core.pricing import selling_price
 
 log = logging.getLogger("shopify")
 
@@ -222,7 +223,6 @@ class ShopifyClient:
 
     def product_input(self, p):
         supplier_name = config.SUPPLIER_NAMES.get(p.supplier, p.supplier)
-        mk = config.markup(p.supplier)
         loc = self.location_id()   # None = no permission to read locations: list without stock numbers
         names = [n for n in (p.option_names or [])][:3]
         variants_in = p.variants or [{"options": [], "sku": p.sku, "price": p.price, "compare_at_price": p.rrp,
@@ -248,7 +248,7 @@ class ShopifyClient:
                 var["inventoryQuantities"] = [{"locationId": loc, "name": "available",
                                                "quantity": stock_qty(v.get("in_stock"), p.availability)}]
             if cost is not None:
-                var["price"] = f"{float(cost) * mk:.2f}"
+                var["price"] = selling_price(cost, p)
                 var["inventoryItem"]["cost"] = cost
             cmp_ = money(v.get("compare_at_price") or (p.rrp if len(variants_in) == 1 else ""))
             if cmp_ and var.get("price") and float(cmp_) > float(var["price"]):

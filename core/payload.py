@@ -8,6 +8,7 @@ import html
 import re
 
 import config
+from core.pricing import selling_price
 
 
 def slugify(text, max_len=80):
@@ -39,7 +40,6 @@ def body_html(p):
 
 
 def build_payload(p, markup=None, status=None):
-    markup = config.markup(p.supplier) if markup is None else markup
     status = (status or config.SHOPIFY_PRODUCT_STATUS or "DRAFT").lower()
 
     names = list(p.option_names or [])
@@ -60,10 +60,10 @@ def build_payload(p, markup=None, status=None):
         out = {}
         for i in range(len(names)):
             out[f"option{i + 1}"] = (v["options"][i] if i < len(v["options"]) else "") or "Default"
-        price = _price(v.get("price") or p.price, markup)
+        price = selling_price(v.get("price") or p.price, p) or ""
         if price is not None:
             out["price"] = price
-        cmp_ = _price(v.get("compare_at_price"), markup)
+        cmp_ = _price(v.get("compare_at_price"), 1.0)
         if cmp_ and price and float(cmp_) > float(price):
             out["compare_at_price"] = cmp_
         if v.get("sku"):

@@ -50,6 +50,7 @@ document.querySelectorAll('script:not([src])').forEach(s => {
   const t = s.textContent || '';
   if (t.indexOf('"attributes"') >= 0 && (t.indexOf('optionPrices') >= 0 || t.indexOf('"index"') >= 0)) sources.push(t);
 });
+sources.push(document.documentElement.innerHTML);   // last resort: the whole page
 for (const src of sources) {
   const re = /(initConfigurableOptions\s*\(\s*['"]?\d+['"]?\s*,|"jsonConfig"\s*:|"spConfig"\s*:|optionConfig\s*:)/g;
   let m;
@@ -233,6 +234,14 @@ class FlairScraper(BaseScraper):
         names, rows = self._config_variants(base.get("sku", ""))
         if rows:
             return V.finalize(names, rows, base)
+        if "page-product-configurable" in self._body_class():
+            # the product HAS options (size/colour) but they could not be read: keep a copy of the page
+            n = self.stats.get("variants_missing", 0) + 1
+            self.stats["variants_missing"] = n
+            if n <= 3:
+                self.dump_debug(f"variants_missing_{n}")
+                log.warning("[flair] product has options but they could not be read - page saved as "
+                            "data/debug/flair_variants_missing_%d.html (send it to Claude)", n)
         return super().extract_variants(ld, base)
 
     def extract_product(self):

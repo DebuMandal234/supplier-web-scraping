@@ -31,7 +31,7 @@ python main.py upload all                 # only upload Excel rows without a Sho
 python main.py schedule                   # create the Windows tasks: list Sunday 02:00, sync daily 06:00
 ```
 Other: `scrape <supplier>` (Excel only, no Shopify), `login <supplier>`, `probe <supplier> <url>`, `cleanup`.
-Every start prints `Supplier scraper version ...` – it should say **r15**.
+Every start prints `Supplier scraper version ...` – it should say **r16**.
 
 - **Keep the Excel file closed while it runs.** If it is open, data goes to `Supplier Data - backup.xlsx` and is
   copied into the main file on the next run.
@@ -67,9 +67,17 @@ Product type = what the product is (the most specific category of the supplier's
 
 ## Prices and stock (settings in `.env`)
 
+**Shopify price = supplier price + 20% + £35 fee (£85 for sofas / big items), rounded UP to ...9.99**
+(e.g. 46.56 → 49.99, 77.32 → 79.99). Each size/colour gets its own price from its own supplier price.
+Compare-at price = the supplier's RRP when it is higher. Cost per item = the supplier price.
+
 | Setting | Meaning | Default |
 |---|---|---|
-| `PRICE_MARKUP` / `FLAIR_MARKUP`, `BEEHIVE_MARKUP`… | Shopify price = supplier trade price × markup (per supplier overrides the general one) | 1.0 |
+| `PRICE_MARGIN_PERCENT` | margin on top of the supplier price | 20 |
+| `PRICE_FEE_STANDARD` / `PRICE_FEE_BIG` | fixed amount added; big = sofas / big items | 35 / 85 |
+| `BIG_ITEM_KEYWORDS` | words in title/category that make a product "big" | sofa, settee, chaise, corner sofa, … |
+| `BIG_ITEM_MIN_WEIGHT_KG` | also "big" from this weight (0 = off) | 0 |
+| `PRICE_ROUND_TO_9_99` | round up to ...9.99 | true |
 | `STOCK_IN_STOCK_QTY` | quantity used when the supplier only says "in stock" | 5 |
 | `STOCK_BUFFER` | subtracted when the supplier shows a real number ("12 in stock" → 12 − buffer) | 0 |
 | `MISSING_RUNS_BEFORE_ZERO` | a product missing on the supplier site this many daily runs in a row gets stock 0 | 2 |

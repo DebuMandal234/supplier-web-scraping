@@ -18,6 +18,7 @@ from datetime import datetime
 import config
 from core import excel
 from core.excel import SHOPIFY_ID_LABEL, STATUS_LABEL, SYNC_LABEL, URL_LABEL, product_from_row
+from core.pricing import selling_price
 from core.shopify import ShopifyError, money, stock_qty
 
 log = logging.getLogger("jobs")
@@ -155,7 +156,6 @@ def sync_product(name, shop, pid, p):
     sp = shop.product_variants(gid)
     if not sp:
         raise ShopifyError("product not found in Shopify (deleted there?)")
-    mk = config.markup(name)
     updates, stock, n_price = [], [], 0
     for sv, v in _match(sp["variants"]["nodes"], p.variants or []):
         if v is None:
@@ -164,7 +164,7 @@ def sync_product(name, shop, pid, p):
         upd = {"id": sv["id"]}
         cost = money(v.get("price") or p.price)
         if cost is not None and float(cost) > 0:
-            price = f"{float(cost) * mk:.2f}"
+            price = selling_price(cost, p)
             if abs(float(sv["price"] or 0) - float(price)) > 0.004:
                 upd["price"] = price
             old_cost = ((item.get("unitCost") or {}).get("amount"))

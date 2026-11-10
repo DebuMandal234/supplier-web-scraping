@@ -40,7 +40,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logging.getLogger("urllib3").setLevel(logging.ERROR)  # hide harmless "Retrying..." noise after Ctrl+C
 log = logging.getLogger("main")
 
-VERSION = "2026-11-10 r15"  # printed at every start: tells you which version of the code is running
+VERSION = "2026-11-10 r16"  # printed at every start: tells you which version of the code is running
 
 
 def get_scraper_class(name):

@@ -106,6 +106,7 @@ class BaseScraper:
     product_url_regex = None
     next_selectors: list = []
     use_sitemap = True
+    walk_options = True               # read variants by switching the option menus next to "Add to basket"
     # Crawl order / link options (defaults = old behaviour, so working suppliers are unchanged)
     sitemap_first = False             # True: visit every sitemap URL before following menu/category links
     prioritise_product_links = True   # push product-looking links of a listing to the front of the queue
@@ -757,16 +758,32 @@ class BaseScraper:
         return ""
 
     def extract_variants(self, ld, base):
+        """Sizes / colours / options of the product - same readers for every supplier (core/variant_sources.py)."""
+        from core import variant_sources as VS
         d = self.driver
-        names, rows = [], []
-        try:
-            woo = d.execute_script(WOO_JS)
-        except WebDriverException:
-            woo = None
-        if woo and woo.get("variations") and woo.get("attrs"):
-            names, rows = V.woo_variants(woo["attrs"], woo["variations"])
-        elif ld.get("hasVariant"):
-            names, rows = V.ld_variants(ld)
+        names, rows = VS.shopify_variants(d)                       # 1. Shopify stores
+        if not rows:
+            try:
+                woo = d.execute_script(WOO_JS)
+            except WebDriverException:
+                woo = None
+            if woo and isinstance(woo.get("variations"), list) and woo["variations"] and woo.get("attrs"):
+                names, rows = V.woo_variants(woo["attrs"], woo["variations"])   # 2a. WooCommerce form
+        if not rows:
+            names, rows = VS.woovr_variants(d)                      # 2b. WooCommerce radio-button list
+        if not rows and ld.get("hasVariant"):
+            names, rows = V.ld_variants(ld)                         # 3. JSON-LD
+        if not rows and self.walk_options:
+            names, rows = VS.walk_options(self)                     # 4. click through the option menus
+        if not rows and VS.page_has_options(d):
+            n = self.stats.get("variants_missing", 0) + 1
+            self.stats["variants_missing"] = n
+            if n <= 3:
+                self.dump_debug(f"variants_missing_{n}")
+                log.warning("[%s] this product has options but they could not be read - page saved as "
+                            "data/debug/%s_variants_missing_%d.html (send it to Claude)", self.name, self.name, n)
+        if rows:
+            log.info("[%s]   %d variants (%s)", self.name, len(rows), ", ".join(names))
         return V.finalize(names, rows, base)
 
     def extract_product(self):

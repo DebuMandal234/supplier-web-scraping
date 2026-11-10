@@ -269,7 +269,8 @@ class ShopifyClient:
             if t and t.lower() not in [x.lower() for x in tags]:
                 tags.append(t)
         files = [{"originalSource": u, "contentType": "IMAGE", "alt": p.title[:500]}
-                 for u in list(dict.fromkeys(i for i in p.images if i.startswith("http")))[:250]]   # all photos
+                 for u in list(dict.fromkeys(i for i in list(p.images) + [v.get("image") or "" for v in variants_in]
+                                             if i.startswith("http")))[:250]]   # all photos + variant photos
         meta = [{"namespace": "supplier", "key": "name", "type": "single_line_text_field", "value": supplier_name},
                 {"namespace": "supplier", "key": "source_url", "type": "url", "value": p.url}]
         if p.sku:

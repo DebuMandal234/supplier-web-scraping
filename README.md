@@ -31,7 +31,7 @@ python main.py upload all                 # only upload Excel rows without a Sho
 python main.py schedule                   # create the Windows tasks: list Sunday 02:00, sync daily 06:00
 ```
 Other: `scrape <supplier>` (Excel only, no Shopify), `login <supplier>`, `probe <supplier> <url>`, `cleanup`.
-Every start prints `Supplier scraper version ...` – it should say **r16**.
+Every start prints `Supplier scraper version ...` – it should say **r17**.
 
 - **Keep the Excel file closed while it runs.** If it is open, data goes to `Supplier Data - backup.xlsx` and is
   copied into the main file on the next run.
@@ -91,6 +91,20 @@ weight, stock tracked with "stop selling when out of stock", and `supplier.*` me
 **Safety:** if a supplier's site can't be read (8 products in a row fail, login broken), the daily sync stops
 for that supplier and changes nothing else. A product that disappears is set to 0 only after
 `MISSING_RUNS_BEFORE_ZERO` runs, never deleted.
+
+## Variants (sizes / colours / options) – all suppliers
+
+Read in this order, the first that works wins (`core/variant_sources.py`):
+1. Shopify stores (Beehive): the product's `.js` data – real option names, SKU, price, stock per variant.
+2. WooCommerce (Heartlands): the variation form, or the radio-button variation list.
+3. schema.org `hasVariant` data in the page.
+4. Any other site (Birlea, Julian Bowen, …): the option dropdowns / radio buttons next to "Add to basket" are
+   switched one by one (max 40 combinations) and the price, SKU and stock shown are read.
+Flair: its own Magento option data first, then the above.
+
+Each variant gets its own SKU, price (pricing formula), stock and photo in Shopify. When a product clearly has
+options but none could be read, the page is saved as `data/debug/<supplier>_variants_missing_N.html` and the
+log says so – send that file to Claude to adjust the reader.
 
 ## Supplier notes
 

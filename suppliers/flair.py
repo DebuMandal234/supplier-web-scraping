@@ -231,18 +231,11 @@ class FlairScraper(BaseScraper):
         return names, rows
 
     def extract_variants(self, ld, base):
-        names, rows = self._config_variants(base.get("sku", ""))
+        names, rows = self._config_variants(base.get("sku", ""))   # Magento option config in the page
         if rows:
+            log.info("[flair]   %d variants (%s)", len(rows), ", ".join(names))
             return V.finalize(names, rows, base)
-        if "page-product-configurable" in self._body_class():
-            # the product HAS options (size/colour) but they could not be read: keep a copy of the page
-            n = self.stats.get("variants_missing", 0) + 1
-            self.stats["variants_missing"] = n
-            if n <= 3:
-                self.dump_debug(f"variants_missing_{n}")
-                log.warning("[flair] product has options but they could not be read - page saved as "
-                            "data/debug/flair_variants_missing_%d.html (send it to Claude)", n)
-        return super().extract_variants(ld, base)
+        return super().extract_variants(ld, base)                   # shared readers + debug copy if needed
 
     def extract_product(self):
         p = super().extract_product()

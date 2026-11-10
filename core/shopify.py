@@ -1,7 +1,7 @@
 """Shopify Admin GraphQL client: list products (productSet) and update stock / prices.
 
 Uses the GraphQL Admin API (the REST product endpoints are legacy/deprecated).
-Credentials come from .env: SHOPIFY_STORE + SHOPIFY_ACCESS_TOKEN, or SHOPIFY_CLIENT_ID + SHOPIFY_CLIENT_SECRET.
+Credentials come from .env: SHOPIFY_STORE + SHOPIFY_CLIENT_ID + SHOPIFY_CLIENT_SECRET.
 Needed app scopes: write_products, write_inventory (+ read_locations to set stock quantities).
 
 Access token: every API call uses the token saved in "access token.txt". With SHOPIFY_CLIENT_ID +
@@ -58,11 +58,11 @@ class ShopifyClient:
         if not config.SHOPIFY_STORE:
             raise ShopifyError("SHOPIFY_STORE is empty in .env (e.g. SHOPIFY_STORE=yourstore.myshopify.com)")
         self.store = config.SHOPIFY_STORE.replace("https://", "").replace("http://", "").strip("/")
-        if not (config.SHOPIFY_ACCESS_TOKEN or (config.SHOPIFY_CLIENT_ID and config.SHOPIFY_CLIENT_SECRET)):
-            raise ShopifyError("Set SHOPIFY_ACCESS_TOKEN (or SHOPIFY_CLIENT_ID + SHOPIFY_CLIENT_SECRET) in .env")
+        if not (config.SHOPIFY_CLIENT_ID and config.SHOPIFY_CLIENT_SECRET):
+            raise ShopifyError("Set SHOPIFY_CLIENT_ID and SHOPIFY_CLIENT_SECRET in .env")
         self.url = f"https://{self.store}/admin/api/{config.SHOPIFY_API_VERSION}/graphql.json"
-        self.uses_client_credentials = bool(config.SHOPIFY_CLIENT_ID and config.SHOPIFY_CLIENT_SECRET)
-        self.token = self._saved_token() if self.uses_client_credentials else config.SHOPIFY_ACCESS_TOKEN
+        self.uses_client_credentials = True
+        self.token = self._saved_token()   # from "access token.txt"
         if not self.token:
             self.token = self._client_credentials_token()
         self._location = None

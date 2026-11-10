@@ -31,7 +31,6 @@ _MIN_API = "2026-04"   # inventory mutations need the @idempotent / changeFromQu
 SHOPIFY_API_VERSION = os.getenv("SHOPIFY_API_VERSION", "2026-10").strip()
 if SHOPIFY_API_VERSION < _MIN_API:
     SHOPIFY_API_VERSION = "2026-10"
-SHOPIFY_ACCESS_TOKEN = os.getenv("SHOPIFY_ACCESS_TOKEN", "").strip()
 SHOPIFY_CLIENT_ID = os.getenv("SHOPIFY_CLIENT_ID", "").strip()
 SHOPIFY_CLIENT_SECRET = os.getenv("SHOPIFY_CLIENT_SECRET", "").strip()
 SHOPIFY_PRODUCT_STATUS = os.getenv("SHOPIFY_PRODUCT_STATUS", "DRAFT").strip().upper()

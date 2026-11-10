@@ -31,7 +31,7 @@ python main.py upload all                 # only upload Excel rows without a Sho
 python main.py schedule                   # create the Windows tasks: list Sunday 02:00, sync daily 06:00
 ```
 Other: `scrape <supplier>` (Excel only, no Shopify), `login <supplier>`, `probe <supplier> <url>`, `cleanup`.
-Every start prints `Supplier scraper version ...` – it should say **r13**.
+Every start prints `Supplier scraper version ...` – it should say **r14**.
 
 - **Keep the Excel file closed while it runs.** If it is open, data goes to `Supplier Data - backup.xlsx` and is
   copied into the main file on the next run.
@@ -94,7 +94,7 @@ Please check each supplier allows you to copy their images and descriptions to y
 
 | Problem | What to do |
 |---|---|
-| "Shopify is not set up" / "refused the request" | check `SHOPIFY_STORE` + token in `.env`; run `shopify-check` |
+| "Shopify is not set up" / "refused the request" | check `SHOPIFY_STORE`, `SHOPIFY_CLIENT_ID`, `SHOPIFY_CLIENT_SECRET` in `.env`; run `shopify-check` |
 | "MISSING permissions" | add the listed scopes to the app in Shopify and update/reinstall it |
 | a row's "Shopify status" says ERROR | it is retried on the next `list` / `upload`; send Claude the message if it repeats |
 | "the website rejected the login" | supplier email/password in `.env` is wrong or locked |

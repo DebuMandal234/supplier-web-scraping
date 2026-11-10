@@ -642,6 +642,34 @@ class BaseScraper:
                 log.info("[%s] visited %d pages, %d queued, %d products", self.name,
                          self.stats["pages"], len(queue), found)
 
+    # ------------------------------------------------------------------ step 2: open one known product directly
+    def read_product(self, url):
+        """Open a product link directly (no category browsing) and read it.
+        Returns a Product, or None when the page is gone / no longer a product page."""
+        for attempt in range(2):
+            try:
+                self.driver.get(url)
+            except WebDriverException as e:
+                log.warning("[%s] could not open %s (%s)", self.name, url, str(e)[:80])
+                return None
+            self.stats["pages"] += 1
+            self.pause()
+            if self.stats["pages"] == 1:
+                self.dismiss_cookies()
+            if attempt == 0 and self.is_logged_out():
+                log.warning("[%s] logged out - logging in again", self.name)
+                self.login()
+                continue
+            break
+        try:
+            if not self.is_product_page():
+                return None
+            p = self.extract_product()
+        except Exception as e:
+            log.warning("[%s] could not read %s: %s", self.name, url, str(e)[:120])
+            return None
+        return p if p and p.title else None
+
     # ------------------------------------------------------------------ extract
     def jsonld_product(self):
         try:

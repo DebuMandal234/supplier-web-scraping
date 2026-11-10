@@ -1,83 +1,86 @@
-# Supplier scraper (scrape -> Excel)
+# Supplier scraper → Excel → Shopify
 
-Selenium opens Chrome, logs in to each supplier, finds ALL products (every category, every page, and the
-site's sitemap) and writes them into ONE Excel file, one tab per supplier:
+Logs in to each supplier site (Beehive, Birlea, Heartlands, Julian Bowen, Flair), saves every product to
+`Supplier Data.xlsx` (one tab per supplier, saved the moment each product is read) and lists the products in
+Shopify. Column **A** of every tab is the **Shopify product ID**.
 
-`C:\Users\USER1\Desktop\WebScraping\Supplier Data.xlsx`
+## The two steps
 
-**Every product is written to Excel the moment it is scraped** (no JSON files). If you stop the program,
-the PC crashes or the power goes, everything scraped so far is already in the file. The file is saved
-safely (a complete new file is written first, then swapped in), so it is never left half-written.
+| Step | Command | When | What it does |
+|---|---|---|---|
+| 1 – list | `python main.py list all` | now, then **every Sunday** | browses the supplier sites, saves **new** products to Excel and creates them in Shopify as **DRAFT**, in batches of 20 (the last, smaller batch is uploaded at the end). The Shopify ID goes to column A. |
+| 2 – sync | `python main.py sync all` | **every day** | no browsing: opens each listed product **directly by its link**, reads price + stock and sends only the changes to Shopify. |
 
-Run the same command again later: products already in the Excel tab are skipped and scraping continues.
+**No duplicates:** a product is skipped when its link or its SKU is already in the supplier's tab, and it is
+linked (not created again) when its SKU is already in Shopify. Rows that failed to upload are retried on the
+next run.
 
-## Run (VS Code -> Terminal -> New Terminal)
+## Run (VS Code → Terminal, or Command Prompt)
 
 ```
+cd C:\Users\USER1\Desktop\WebScraping
 .venv\Scripts\activate
-python main.py login heartlands              # test one login
-python main.py scrape heartlands --limit 5   # small test (5 products)
-python main.py scrape heartlands             # FULL run: all categories, all pages
-python main.py scrape beehive flair          # only these suppliers
-python main.py scrape all                    # all five, one after another
-python main.py scrape flair --fresh          # delete flair's tab and start that supplier over
-python main.py cleanup                       # delete old JSON / debug / test files (not Excel, not code)
+
+python main.py shopify-check              # 1st: test the Shopify key + permissions
+python main.py list flair --limit 5       # small test: 5 new Flair products -> Excel + Shopify
+python main.py list flair                 # STEP 1, one supplier
+python main.py list all                   # STEP 1, all five one after another
+python main.py sync flair --limit 5       # small test of STEP 2
+python main.py sync all                   # STEP 2, all suppliers
+python main.py upload all                 # only upload Excel rows without a Shopify ID (no browsing)
+python main.py schedule                   # create the Windows tasks: list Sunday 02:00, sync daily 06:00
 ```
-Supplier names: `beehive`, `birlea`, `heartlands`, `julian_bowen`, `flair`.
+Other: `scrape <supplier>` (Excel only, no Shopify), `login <supplier>`, `probe <supplier> <url>`, `cleanup`.
+Every start prints `Supplier scraper version ...` – it should say **r9**.
 
-- **Keep the Excel file CLOSED while scraping.** If it is open, the program keeps working and saves to
-  `Supplier Data - backup.xlsx` next to it; when you close Excel, the next save goes to the main file again.
-- Stop any time with `Ctrl+C`.
-- Chrome stays visible. If a captcha/2FA appears, solve it by hand (2 minutes).
-- `PAGE_DELAY` in `.env` = seconds between pages (lower = faster, higher = gentler on the site).
-- `SAVE_EVERY=1` in `.env` = save after every product. With many thousands of rows each save takes longer;
-  if that slows things down, set it to 5 or 10 (you then risk losing at most that many products).
+- **Keep the Excel file closed while it runs.** If it is open, data goes to `Supplier Data - backup.xlsx` and is
+  copied into the main file on the next run.
+- Stop any time with `Ctrl+C`; the products scraped so far are in Excel and the waiting batch is uploaded.
+- Scheduled runs write their log to `data\logs\list.log` and `data\logs\sync.log`.
 
-## Test ONE page (finding problems fast)
+## Shopify set-up (once)
 
-```
-python main.py probe flair https://www.flairbeds.co.uk/flair-wizard-single-bed-frame
-python main.py probe flair https://www.flairbeds.co.uk/flair-wizard-single-bed-frame --save
-```
-Logs in, opens that single page and prints: is it recognised as a product, and the title, brand, SKU, price,
-variants, images and specs it read. `--save` also writes it into the supplier's Excel tab.
-A screenshot and the page HTML go to `data\debug` (files `*_probe.*`) - send them to Claude if a field is wrong.
-Every start prints `Supplier scraper version ...`; if that line is missing, your files are out of date.
+1. Shopify admin → Settings → Apps → Develop apps (or the Dev Dashboard) → create an app for your store.
+2. Admin API scopes: `read_products`, `write_products`, `read_inventory`, `write_inventory`, `read_locations`.
+3. Install it and put the credentials in `.env` (never in the code, never on GitHub):
+   ```
+   SHOPIFY_STORE=yourstore.myshopify.com
+   SHOPIFY_ACCESS_TOKEN=shpat_...          # or SHOPIFY_CLIENT_ID + SHOPIFY_CLIENT_SECRET
+   SHOPIFY_PRODUCT_STATUS=DRAFT
+   ```
+4. `python main.py shopify-check` must say "Shopify is ready".
 
-## What is in each row
+## Prices and stock (settings in `.env`)
 
-Supplier, SKU, title, handle, vendor/brand, product type/category, tags, supplier price, Shopify price
-(with `PRICE_MARKUP`), RRP, availability, EAN, weight, variants (colours/sizes with own price/SKU),
-descriptions (text + HTML), meta description, image URLs, dropdown options, every spec as its own
-`Spec: ...` column, breadcrumbs, product URL, and **Shopify payload (JSON)** = the ready request body for
-`POST /admin/api/<version>/products.json`.
-Set `PRICE_MARKUP` in `.env` (e.g. 1.8) BEFORE scraping; Part 2 can also recompute from "Price (supplier)".
+| Setting | Meaning | Default |
+|---|---|---|
+| `PRICE_MARKUP` / `FLAIR_MARKUP`, `BEEHIVE_MARKUP`… | Shopify price = supplier trade price × markup (per supplier overrides the general one) | 1.0 |
+| `STOCK_IN_STOCK_QTY` | quantity used when the supplier only says "in stock" | 5 |
+| `STOCK_BUFFER` | subtracted when the supplier shows a real number ("12 in stock" → 12 − buffer) | 0 |
+| `MISSING_RUNS_BEFORE_ZERO` | a product missing on the supplier site this many daily runs in a row gets stock 0 | 2 |
+| `SHOPIFY_BATCH_SIZE` | products per upload batch | 20 |
+| `SHOPIFY_LOCATION_ID` | stock location (empty = the store's first location) | – |
 
-## How it finds every product
+Each product is listed with: supplier collection (e.g. "Flair"), vendor, product type, tags, description +
+specs, images, options/variants with own SKU and price, cost per item (supplier price), compare-at (RRP),
+weight, stock tracked with "stop selling when out of stock", and `supplier.*` metafields (name, SKU, source URL).
 
-1. Starts from the home/shop pages and follows every category and menu link.
-2. On each listing it follows all pagination links (page numbers + "next"), scrolls down and clicks "Load more".
-3. Reads `robots.txt` / `sitemap.xml` and visits every product URL listed there.
-4. Re-logs-in automatically if the session expires; skips duplicates.
+**Safety:** if a supplier's site can't be read (8 products in a row fail, login broken), the daily sync stops
+for that supplier and changes nothing else. A product that disappears is set to 0 only after
+`MISSING_RUNS_BEFORE_ZERO` runs, never deleted.
 
-After a run, open `data\<supplier>_crawl_report.txt`: pages visited, products found, failed URLs.
+## Supplier notes
+
+Per-supplier rules live in `suppliers\<supplier>.py`. Flair: on each category page every product link is opened,
+read and saved straight away, then the next page; filter links are ignored; prices are trade prices ex VAT.
+Please check each supplier allows you to copy their images and descriptions to your store.
 
 ## If something does not work
 
 | Problem | What to do |
 |---|---|
-| "the website rejected the login" | Email/password in `.env` is wrong or the account is locked. Log in by hand in Chrome; fix `.env`. Don't retry many times. |
-| "could not find the login form" / "login did not complete" | Send Claude the newest `.png` and `.html` in `data\debug`. |
-| 0 products or wrong/empty columns | Send Claude one example product page link from that supplier. |
-| Fewer products than the website shows | Send Claude the crawl report and a category page link. |
-| "Cannot open ... Close it in Excel" | Close the Excel file and run again. |
-
-Per-supplier tuning lives in `suppliers\<supplier>.py`.
-
-### Flair notes (version r8)
-Flair (flairbeds.co.uk): on each category page every product link is opened, read and saved to Excel
-straight away, then the next category page is opened. The sitemap is used afterwards as a safety net. Category filter links
-(`?cat=..&ck_f_colour=..`) are ignored, `?p=2` pages are followed. Product pages / login state are read from
-the page's own markers, and sizes/colours come with their own price. Prices are trade prices ex VAT.
-Old-format tabs from earlier versions are kept and renamed to `<supplier>_old`.
-Please check each supplier allows you to copy their images and descriptions to your store.
+| "Shopify is not set up" / "refused the request" | check `SHOPIFY_STORE` + token in `.env`; run `shopify-check` |
+| "MISSING permissions" | add the listed scopes to the app in Shopify and update/reinstall it |
+| a row's "Shopify status" says ERROR | it is retried on the next `list` / `upload`; send Claude the message if it repeats |
+| "the website rejected the login" | supplier email/password in `.env` is wrong or locked |
+| "Cannot open ... Close it in Excel" | close the Excel file and run again |

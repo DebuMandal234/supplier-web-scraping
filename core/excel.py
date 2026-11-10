@@ -16,7 +16,11 @@ from core.payload import build_payload
 log = logging.getLogger("excel")
 
 # (key, header)
+SHOPIFY_ID_LABEL = "Shopify product ID"
+STATUS_LABEL = "Shopify status"
+SYNC_LABEL = "Last stock sync"
 FIXED_COLUMNS = [
+    ("shopify_id", SHOPIFY_ID_LABEL),   # column A: filled once the product is listed in Shopify
     ("supplier", "Supplier"), ("sku", "SKU"), ("title", "Title"), ("handle", "Handle"),
     ("brand", "Vendor / Brand"), ("category", "Product type / Category"), ("tags_text", "Tags"),
     ("price", "Price (supplier)"), ("shopify_price", "Price (Shopify, with markup)"), ("rrp", "RRP / Was"),
@@ -27,6 +31,7 @@ FIXED_COLUMNS = [
     ("image_count", "Image count"), ("images_text", "Image URLs"), ("options_json", "Dropdown options (JSON)"),
     ("specs_json", "Specs (JSON)"), ("breadcrumbs", "Breadcrumbs"), ("url", "Product URL"),
     ("scraped_at", "Scraped at"), ("payload_json", "Shopify payload (JSON, for POST products.json)"),
+    ("shopify_status", STATUS_LABEL), ("synced_at", SYNC_LABEL),
 ]
 URL_LABEL = "Product URL"
 PAYLOAD_LABEL = "Shopify payload (JSON, for POST products.json)"
@@ -58,8 +63,15 @@ def _values(p):
         "options_json": json.dumps(p.options, ensure_ascii=False) if p.options else "",
         "specs_json": json.dumps(p.specs, ensure_ascii=False) if p.specs else "",
         "payload_json": pj if len(pj) <= CELL_LIMIT else "TOO LONG FOR ONE EXCEL CELL (description/images too large)",
+        "shopify_id": "", "shopify_status": "waiting for upload", "synced_at": "",
     })
     return d
+
+
+def _norm(url):
+    from urllib.parse import urldefrag, urlparse
+    p = urlparse(urldefrag(str(url or ""))[0])
+    return f"{p.netloc.replace('www.', '')}{p.path.rstrip('/')}".lower()
 
 
 def _width(label):
@@ -86,6 +98,7 @@ class SupplierSheet:
         self.pending = 0
         self.count = 0
         self.known_urls = set()
+        self.known_skus = set()
         self.ws = None
         self.cols = {}
         self._last_warn = 0
@@ -158,6 +171,17 @@ class SupplierSheet:
         self.ws = ws
         self.next_row = last + 1
         header = [c.value for c in ws[1]]
+        if header and header[0] != SHOPIFY_ID_LABEL and SHOPIFY_ID_LABEL not in header:
+            # tab from before the Shopify step: insert the "Shopify product ID" column as column A
+            ws.insert_cols(1)
+            for i in range(1, len(header) + 2):
+                ws.column_dimensions[get_column_letter(i)].width = _width(ws.cell(row=1, column=i).value or "")
+            ws.freeze_panes = "E2"
+            self.pending = max(self.pending, 1)
+            log.info("[%s] added column A '%s' to the existing tab", self.supplier, SHOPIFY_ID_LABEL)
+            header = [SHOPIFY_ID_LABEL] + header
+            c = ws.cell(row=1, column=1, value=SHOPIFY_ID_LABEL)
+            c.font, c.fill = HEAD_FONT, HEAD_FILL
         self.cols = {h: i + 1 for i, h in enumerate(header) if h}
         for _, label in FIXED_COLUMNS:
             self._ensure_col(label)
@@ -166,6 +190,11 @@ class SupplierSheet:
             for (u,) in ws.iter_rows(min_row=2, min_col=col, max_col=col, values_only=True):
                 if u:
                     self.known_urls.add(u)
+        if "SKU" in self.cols:
+            col = self.cols["SKU"]
+            for (sk,) in ws.iter_rows(min_row=2, min_col=col, max_col=col, values_only=True):
+                if sk and str(sk).strip():
+                    self.known_skus.add(str(sk).strip().lower())
         self.count = len(self.known_urls)
         self._activate()
 
@@ -178,7 +207,7 @@ class SupplierSheet:
             self.new_tab = True
             for _, label in FIXED_COLUMNS:
                 self._ensure_col(label)
-            ws.freeze_panes = "D2"
+            ws.freeze_panes = "E2"
             for sh in list(self.wb.worksheets):   # drop the empty "Sheet1" Excel/openpyxl start with
                 if sh is not ws and re.fullmatch(r"Sheet\d*", sh.title) and _last_data_row(sh) == 0:
                     del self.wb[sh.title]
@@ -202,8 +231,20 @@ class SupplierSheet:
             if self.flush():
                 self.new_tab = False
 
+    def is_known(self, product):
+        """Already in this tab? Same product link, or same SKU (when the product has one)."""
+        if getattr(self, "_norms_n", -1) != len(self.known_urls):
+            self._norms = {_norm(u) for u in self.known_urls}
+            self._norms_n = len(self.known_urls)
+        if _norm(product.url) in self._norms:
+            return "same product link"
+        sku = (product.sku or "").strip().lower()
+        if sku and sku in self.known_skus:
+            return f"same SKU {product.sku}"
+        return ""
+
     def add(self, product):
-        """Append one product row and save right away (every SAVE_EVERY products)."""
+        """Append one product row and save right away (every SAVE_EVERY products). Returns its row number."""
         self._ensure_sheet()
         for k in product.specs:
             self._ensure_col(f"Spec: {k}")
@@ -217,10 +258,39 @@ class SupplierSheet:
             self.ws.cell(row=self.next_row, column=i, value=v)
         self.next_row += 1
         self.known_urls.add(product.url)
+        if (product.sku or "").strip():
+            self.known_skus.add(product.sku.strip().lower())
         self.count += 1
         self.pending += 1
         if self.pending >= config.SAVE_EVERY:
             self.flush()
+        return self.next_row - 1
+
+    # ---- reading / updating rows (Shopify upload + stock sync)
+    def rows(self):
+        """(row number, {header: value}) for every product row of the tab."""
+        if self.ws is None:
+            return
+        labels = {i: h for h, i in self.cols.items()}
+        for r, values in enumerate(self.ws.iter_rows(min_row=2, max_row=self.next_row - 1, values_only=True), 2):
+            d = {labels.get(i + 1): v for i, v in enumerate(values) if labels.get(i + 1)}
+            if any(v not in (None, "") for v in d.values()):
+                yield r, d
+
+    def row(self, r):
+        return {h: self.ws.cell(row=r, column=i).value for h, i in self.cols.items()}
+
+    def set(self, r, label, value, save=False):
+        self._ensure_col(label)
+        self.ws.cell(row=r, column=self.cols[label], value=_cell(value))
+        self.pending += 1
+        if save and self.pending >= config.SAVE_EVERY:
+            self.flush()
+
+    def waiting_rows(self):
+        """Rows that are not in Shopify yet (no product ID)."""
+        return [r for r, d in self.rows()
+                if not str(d.get(SHOPIFY_ID_LABEL) or "").strip() and d.get(URL_LABEL) and d.get("Title")]
 
     def flush(self):
         if self.pending == 0 or not self.wb.sheetnames:
@@ -244,6 +314,7 @@ class SupplierSheet:
                           "It goes into the main file again as soon as you close Excel.", self.backup)
             return False
         self.pending = 0
+        log.info("Saved to Excel: tab '%s' has %d products", self.supplier, self.count)
         if self.in_backup or os.path.exists(self.backup):
             self.in_backup = False
             try:
@@ -251,7 +322,7 @@ class SupplierSheet:
             except OSError:
                 pass
             log.info("Excel file is writable again - all data is in the main file.")
-        log.info("Saved to Excel: tab '%s' now has %d products  (%s)", self.supplier, self.count, self.path)
+        log.debug("Saved to Excel: tab '%s' (%d products)", self.supplier, self.count)
         return True
 
     def close(self):
@@ -259,3 +330,39 @@ class SupplierSheet:
             self.flush()
         except Exception as e:
             log.error("final save failed: %s", e)
+
+
+def product_from_row(d):
+    """Rebuild a Product from one Excel row (used to upload rows to Shopify)."""
+    from core.models import Product
+
+    def js(label, default):
+        v = d.get(label)
+        if not v:
+            return default
+        try:
+            return json.loads(v)
+        except ValueError:
+            return default
+
+    def txt(label):
+        v = d.get(label)
+        return "" if v is None else str(v)
+
+    images = [u.strip() for u in txt("Image URLs").split("|") if u.strip()]
+    names = [n.strip() for n in txt("Option names").split(",") if n.strip()]
+    variants = js("Variants (JSON)", [])
+    p = Product(
+        supplier=txt("Supplier"), url=txt(URL_LABEL), title=txt("Title"), handle=txt("Handle"), sku=txt("SKU"),
+        ean=txt("EAN / Barcode"), brand=txt("Vendor / Brand"), category=txt("Product type / Category"),
+        breadcrumbs=txt("Breadcrumbs"), price=txt("Price (supplier)"), rrp=txt("RRP / Was"),
+        currency=txt("Currency") or "GBP", availability=txt("Availability"), weight=txt("Weight (kg)"),
+        short_description=txt("Short description"), description=txt("Description (HTML)"),
+        description_text=txt("Description (text)"), meta_description=txt("Meta description"), images=images,
+        options=js("Dropdown options (JSON)", {}), specs=js("Specs (JSON)", {}),
+        option_names=names if variants else [], variants=variants,
+    )
+    if not p.variants:
+        p.variants = [{"options": [], "sku": p.sku, "price": p.price, "compare_at_price": p.rrp,
+                       "barcode": p.ean, "weight": p.weight, "image": "", "in_stock": None}]
+    return p

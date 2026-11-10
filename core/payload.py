@@ -39,7 +39,7 @@ def body_html(p):
 
 
 def build_payload(p, markup=None, status=None):
-    markup = config.PRICE_MARKUP if markup is None else markup
+    markup = config.markup(p.supplier) if markup is None else markup
     status = (status or config.SHOPIFY_PRODUCT_STATUS or "DRAFT").lower()
 
     names = list(p.option_names or [])

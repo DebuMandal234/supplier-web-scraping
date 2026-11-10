@@ -41,6 +41,12 @@ function grab(src, start) {
   }
   return null;
 }
+// Flair: option data (sizes / colours with SKU, price, photos) sits in <script type="application/json" data-dn-config>
+for (const s of document.querySelectorAll('script[data-dn-config], script[type="application/json"]')) {
+  const t = s.textContent || '';
+  if (t.indexOf('"attributes"') < 0 || t.indexOf('optionPrices') < 0) continue;
+  try { const cfg = JSON.parse(t); if (cfg && cfg.attributes && Object.keys(cfg.attributes).length) return cfg; } catch (e) {}
+}
 const sources = [];
 document.querySelectorAll('[x-data]').forEach(el => {
   const x = el.getAttribute('x-data') || '';

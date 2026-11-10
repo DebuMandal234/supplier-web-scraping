@@ -289,19 +289,34 @@ class FlairScraper(BaseScraper):
         # all product photos (main gallery), full size
         try:
             imgs = d.execute_script(r"""
+              // Flair gallery (#gallery.kbg): one slide per photo; lazy slides keep their URLs in data-srcset.
+              // Take the biggest size of every slide (1200x1500), so ALL photos are found, not only the first.
               const out = [];
-              const add = u => { if (u && /\/media\/catalog\/product\//.test(u)) out.push(u.split('?')[0]); };
-              document.querySelectorAll('[x-data*=gallery] img, .product.media img, #gallery img, [id*=gallery] img')
-                .forEach(i => { add(i.getAttribute('data-full') || i.getAttribute('data-zoom-image') || i.currentSrc || i.src); });
-              document.querySelectorAll('script:not([src])').forEach(s => {
-                const t = s.textContent || '';
-                if (t.indexOf('"full"') < 0) return;
-                (t.match(/"full"\s*:\s*"([^"]+)"/g) || []).forEach(m => add(JSON.parse('{' + m + '}').full));
+              const biggest = el => {
+                const set = el.getAttribute('srcset') || el.getAttribute('data-srcset') || '';
+                let best = '', bw = 0;
+                set.split(',').forEach(part => {
+                  const [u, w] = part.trim().split(/\s+/);
+                  const n = parseInt(w || '0', 10);
+                  if (u && n >= bw) { best = u; bw = n; }
+                });
+                return best || el.getAttribute('data-src') || el.getAttribute('src') || '';
+              };
+              document.querySelectorAll('#gallery .kbg__open img, .kbg .kbg__open img').forEach(i => {
+                const u = biggest(i);
+                if (u && /catalog\/product\//.test(u)) out.push(new URL(u, location.href).href);
               });
+              if (!out.length) {   // older gallery markup
+                document.querySelectorAll('[x-data*=gallery] img, .product.media img, #gallery img').forEach(i => {
+                  const u = biggest(i);
+                  if (u && /catalog\/product\//.test(u)) out.push(new URL(u, location.href).href);
+                });
+              }
               return out;
             """) or []
+            imgs = list(dict.fromkeys(i for i in imgs if i.startswith("http")))
             if imgs:
-                p.images = list(dict.fromkeys([i for i in imgs if i.startswith("http")] + p.images))
+                p.images = imgs   # all gallery photos, in the site's order
         except WebDriverException:
             pass
 

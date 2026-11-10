@@ -49,6 +49,18 @@ def stock_qty(in_stock, availability):
     return config.STOCK_IN_STOCK_QTY
 
 
+def product_type(p, supplier_name=""):
+    """Shopify product type = what the product is, e.g. "Ottoman Beds", "Sofas": the most specific category of
+    the supplier's breadcrumb (Home > Beds > Ottoman Beds > product), else the category, else the supplier."""
+    crumbs = [c.strip() for c in (p.breadcrumbs or "").split(">") if c.strip()]
+    skip = {"home", "shop", "products", "all products", (p.title or "").strip().lower()}
+    crumbs = [c for c in crumbs if c.lower() not in skip]
+    t = crumbs[-1] if crumbs else (p.category or "").strip()
+    if not t or t.lower() == (supplier_name or "").lower():
+        t = (p.category or "").strip() or supplier_name
+    return t[:255]
+
+
 class ShopifyError(RuntimeError):
     pass
 
@@ -257,7 +269,7 @@ class ShopifyClient:
             if t and t.lower() not in [x.lower() for x in tags]:
                 tags.append(t)
         files = [{"originalSource": u, "contentType": "IMAGE", "alt": p.title[:500]}
-                 for u in list(dict.fromkeys(i for i in p.images if i.startswith("http")))[:20]]
+                 for u in list(dict.fromkeys(i for i in p.images if i.startswith("http")))[:250]]   # all photos
         meta = [{"namespace": "supplier", "key": "name", "type": "single_line_text_field", "value": supplier_name},
                 {"namespace": "supplier", "key": "source_url", "type": "url", "value": p.url}]
         if p.sku:
@@ -266,7 +278,7 @@ class ShopifyClient:
             "title": p.title[:255],
             "descriptionHtml": body_html(p),
             "vendor": (p.brand or supplier_name)[:255],
-            "productType": supplier_name[:255],   # supplier name = the product's category in Shopify
+            "productType": product_type(p, supplier_name),
             "tags": tags[:250],
             "status": config.SHOPIFY_PRODUCT_STATUS if config.SHOPIFY_PRODUCT_STATUS in
             ("DRAFT", "ACTIVE", "ARCHIVED") else "DRAFT",

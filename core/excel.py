@@ -59,7 +59,7 @@ def _values(p):
         "option_names_text": ", ".join(p.option_names),
         "variants_json": json.dumps(p.variants, ensure_ascii=False) if len(p.variants) > 1 else "",
         "image_count": len(p.images),
-        "images_text": " | ".join(p.images),
+        "images_text": ", ".join(p.images),
         "options_json": json.dumps(p.options, ensure_ascii=False) if p.options else "",
         "specs_json": json.dumps(p.specs, ensure_ascii=False) if p.specs else "",
         "payload_json": pj if len(pj) <= CELL_LIMIT else "TOO LONG FOR ONE EXCEL CELL (description/images too large)",
@@ -349,7 +349,7 @@ def product_from_row(d):
         v = d.get(label)
         return "" if v is None else str(v)
 
-    images = [u.strip() for u in txt("Image URLs").split("|") if u.strip()]
+    images = [u.strip() for u in re.split(r"\s*[,|]\s*(?=https?://)", txt("Image URLs")) if u.strip()]
     names = [n.strip() for n in txt("Option names").split(",") if n.strip()]
     variants = js("Variants (JSON)", [])
     p = Product(

@@ -231,6 +231,56 @@ class SupplierSheet:
             if self.flush():
                 self.new_tab = False
 
+    def _variant_skus(self):
+        """{variant SKU (lower case): (row, title)} for every row of the tab (product SKU + its variants' SKUs)."""
+        out = {}
+        for r, d in self.rows():
+            title = d.get("Title") or ""
+            skus = [d.get("SKU")]
+            try:
+                skus += [v.get("sku") for v in json.loads(d.get("Variants (JSON)") or "[]")]
+            except (ValueError, AttributeError):
+                pass
+            for s in skus:
+                if s and str(s).strip():
+                    out.setdefault(str(s).strip().lower(), (r, title))
+        return out
+
+    def covered_by(self, product):
+        """A product whose variants ALL already belong to another row (e.g. a single-colour page whose sizes are
+        variants of the main multi-colour product). Returns that row's title, or ""."""
+        skus = [str(v.get("sku") or "").strip().lower() for v in (product.variants or [])]
+        skus = [s for s in skus if s]
+        if not skus:
+            return ""
+        known = self._variant_skus()
+        rows = {known[s][0] for s in skus if s in known}
+        if len(rows) == 1 and all(s in known for s in skus):
+            return known[skus[0]][1]
+        return ""
+
+    def mark_covered_rows(self, row, product):
+        """After adding a multi-option product: rows listed earlier whose variants are all inside it
+        (single-colour pages) are marked in Excel. Returns their titles."""
+        mine = {str(v.get("sku") or "").strip().lower() for v in (product.variants or []) if v.get("sku")}
+        if len(mine) < 2:
+            return []
+        found = []
+        for r, d in self.rows():
+            if r == row:
+                continue
+            skus = [d.get("SKU")]
+            try:
+                skus += [v.get("sku") for v in json.loads(d.get("Variants (JSON)") or "[]")]
+            except (ValueError, AttributeError):
+                pass
+            vs = {str(s).strip().lower() for s in skus[1:] if s} or {str(skus[0] or "").strip().lower()}
+            if vs and vs <= mine:
+                self.set(r, STATUS_LABEL, f"DUPLICATE: its variants are part of '{product.title}' (row {row}). "
+                                          f"Delete this draft in Shopify if it was listed.")
+                found.append(d.get("Title") or "")
+        return found
+
     def is_known(self, product):
         """Already in this tab? Same product link, or same SKU (when the product has one)."""
         if getattr(self, "_norms_n", -1) != len(self.known_urls):
@@ -290,7 +340,8 @@ class SupplierSheet:
     def waiting_rows(self):
         """Rows that are not in Shopify yet (no product ID)."""
         return [r for r, d in self.rows()
-                if not str(d.get(SHOPIFY_ID_LABEL) or "").strip() and d.get(URL_LABEL) and d.get("Title")]
+                if not str(d.get(SHOPIFY_ID_LABEL) or "").strip() and d.get(URL_LABEL) and d.get("Title")
+                and not str(d.get(STATUS_LABEL) or "").startswith("DUPLICATE")]
 
     def flush(self):
         if self.pending == 0 or not self.wb.sheetnames:

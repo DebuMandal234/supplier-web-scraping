@@ -188,9 +188,16 @@ class FlairScraper(BaseScraper):
             cfg = None
         if not cfg:
             return [], []
-        attrs = sorted(cfg.get("attributes", {}).values(), key=lambda a: int(a.get("position") or 0))
-        attrs = attrs[:V.MAX_OPTIONS]
-        names = [a.get("label") or a.get("code") or "Option" for a in attrs]
+        def order(a):   # Size first, then Color, then anything else (like the Shopify listing)
+            lab = (a.get("label") or a.get("code") or "").lower()
+            return (0 if "size" in lab else 1 if ("colour" in lab or "color" in lab) else 2,
+                    int(a.get("position") or 0))
+        attrs = sorted(cfg.get("attributes", {}).values(), key=order)[:V.MAX_OPTIONS]
+
+        def nice(a):
+            lab = (a.get("label") or a.get("code") or "Option").strip()
+            return "Color" if lab.lower() in ("colour", "color", "ck_colour") else lab
+        names = [nice(a) for a in attrs]
         index = cfg.get("index") or {}
         if not index:   # rebuild product -> option map from the options' product lists
             for a in attrs:

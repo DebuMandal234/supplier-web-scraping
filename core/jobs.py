@@ -35,7 +35,7 @@ def upload_rows(name, sheet, shop, rows):
     batch = []
     for r in rows:
         d = sheet.row(r)
-        if str(d.get(SHOPIFY_ID_LABEL) or "").strip():
+        if str(d.get(SHOPIFY_ID_LABEL) or "").strip() or str(d.get(STATUS_LABEL) or "").startswith("DUPLICATE"):
             continue
         p = product_from_row(d)
         p.supplier = p.supplier or name
@@ -101,8 +101,16 @@ def run_list(name, scraper_cls, make_driver, shop, limit=None):
             if why:
                 log.info("[%s]   already in Excel (%s) - skipped: %s", name, why, p.title)
                 continue
-            pending.append(sheet.add(p))   # saved to Excel now
+            parent = sheet.covered_by(p)
+            if parent:
+                log.info("[%s]   skipped: all its variants are already in '%s' - %s", name, parent, p.title)
+                continue
+            row = sheet.add(p)             # saved to Excel now
+            pending.append(row)
             new += 1
+            for dup in sheet.mark_covered_rows(row, p):
+                log.warning("[%s]   '%s' is a single-colour copy of '%s' - marked DUPLICATE in Excel; delete "
+                            "its Shopify draft if it was listed", name, dup, p.title)
             if len(pending) >= config.SHOPIFY_BATCH_SIZE:
                 upload_rows(name, sheet, shop, pending)
                 pending = []

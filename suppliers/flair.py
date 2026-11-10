@@ -176,6 +176,10 @@ class FlairScraper(BaseScraper):
         price = self._first("[data-price-type=finalPrice][data-price-amount]", "data-price-amount", main) \
             or self._first("[data-price-amount]", "data-price-amount", main)
         rrp = self._first("[data-price-type=oldPrice][data-price-amount]", "data-price-amount", main)
+        if not price:   # logged-in Hyva price box: <div class="final-price"><span class="price">£209.91</span>
+            price = self._price_from(self._first(".product-info-main .final-price .price, .final-price .price"))
+        if not rrp:     # <div class="old-price"><span class="price">£329.99</span> (RRP inc VAT)
+            rrp = self._price_from(self._first(".product-info-main .old-price .price, .old-price .price"))
         price, rrp = V.money(price), V.money(rrp)
         if rrp and price and float(rrp) <= float(price):
             rrp = ""
@@ -216,7 +220,9 @@ class FlairScraper(BaseScraper):
             final = V.money((pr.get("finalPrice") or {}).get("amount"))
             old = V.money((pr.get("oldPrice") or {}).get("amount"))
             img = images.get(pid) or images.get(str(pid)) or []
-            img = img[0] if isinstance(img, list) and img else (img if isinstance(img, dict) else {})
+            if isinstance(img, list) and img:   # the variant's main photo (isMain), else its first one
+                img = next((i for i in img if isinstance(i, dict) and i.get("isMain")), img[0])
+            img = img if isinstance(img, dict) else {}
             sku = skus.get(pid) or skus.get(str(pid)) or ""
             if not sku and base_sku:
                 sku = f"{base_sku}-{'-'.join(slug for slug in (re.sub(r'[^A-Za-z0-9]+', '', o) for o in opts) if slug)}"

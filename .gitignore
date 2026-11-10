@@ -1,6 +1,7 @@
 # secrets - never commit
 .env
 .shopify_token
+access token.txt
 local_settings.txt
 service_account.json
 

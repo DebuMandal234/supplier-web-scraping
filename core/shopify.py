@@ -4,8 +4,9 @@ Uses the GraphQL Admin API (the REST product endpoints are legacy/deprecated).
 Credentials come from .env: SHOPIFY_STORE + SHOPIFY_ACCESS_TOKEN, or SHOPIFY_CLIENT_ID + SHOPIFY_CLIENT_SECRET.
 Needed app scopes: write_products, write_inventory (+ read_locations to set stock quantities).
 
-Access token: with SHOPIFY_CLIENT_ID + SHOPIFY_CLIENT_SECRET the token is requested once, saved in the file
-.shopify_token and reused; a new one is requested only when Shopify refuses the saved one (or it has expired).
+Access token: every API call uses the token saved in "access token.txt". With SHOPIFY_CLIENT_ID +
+SHOPIFY_CLIENT_SECRET a new token is requested only when Shopify refuses that token (expired after ~24 h);
+the new token is written to "access token.txt" and used from then on.
 
 What this program changes in Shopify:
   * STEP 1: creates products (status DRAFT) - nothing else.
@@ -70,14 +71,14 @@ class ShopifyClient:
 
     # ------------------------------------------------------------------ transport
     def _saved_token(self):
-        """Token saved by an earlier run, if it is for this store and not expired (5 minutes margin)."""
+        """The token in "access token.txt" (first line), or "" if the file is missing/empty."""
         try:
             with open(config.SHOPIFY_TOKEN_FILE, encoding="utf-8") as f:
-                parts = f.read().split()
-            token, expires, store = parts[0], float(parts[1]), (parts[2] if len(parts) > 2 else self.store)
-            if store == self.store and time.time() < expires - 300:
-                return token
-        except (OSError, ValueError, IndexError):
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#"):
+                        return line
+        except OSError:
             pass
         return ""
 
@@ -88,14 +89,13 @@ class ShopifyClient:
             "grant_type": "client_credentials"})
         if not r.ok:
             raise ShopifyError(f"Shopify login (client credentials) failed: HTTP {r.status_code} {r.text[:200]}")
-        data = r.json()
-        token = data["access_token"]
+        token = r.json()["access_token"]
         try:
             with open(config.SHOPIFY_TOKEN_FILE, "w", encoding="utf-8") as f:
-                f.write(f"{token}\n{time.time() + float(data.get('expires_in') or 86399):.0f}\n{self.store}\n")
+                f.write(token + "\n")
         except OSError as e:
             log.warning("could not save the Shopify token file: %s", e)
-        log.info("Got a new Shopify access token (saved in %s)", os.path.basename(config.SHOPIFY_TOKEN_FILE))
+        log.info("Got a new Shopify access token - saved in '%s'", os.path.basename(config.SHOPIFY_TOKEN_FILE))
         return token
 
     def gql(self, query, variables=None, retries=6):

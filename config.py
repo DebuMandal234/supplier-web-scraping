@@ -38,7 +38,7 @@ SHOPIFY_PRODUCT_STATUS = os.getenv("SHOPIFY_PRODUCT_STATUS", "DRAFT").strip().up
 SHOPIFY_LOCATION_ID = os.getenv("SHOPIFY_LOCATION_ID", "").strip()   # empty = the store's first location
 SHOPIFY_BATCH_SIZE = max(1, int(os.getenv("SHOPIFY_BATCH_SIZE", "20")))  # upload when this many are waiting
 PRICE_MARKUP = float(os.getenv("PRICE_MARKUP", "1.0"))
-SHOPIFY_TOKEN_FILE = os.path.join(BASE_DIR, ".shopify_token")   # cached access token (never on GitHub)
+SHOPIFY_TOKEN_FILE = os.path.join(BASE_DIR, "access token.txt")   # current Shopify access token (never on GitHub)
 # Safety switches - what the program may change in Shopify:
 SHOPIFY_ALLOW_SYNC = os.getenv("SHOPIFY_ALLOW_SYNC", "false").lower() == "true"          # STEP 2 stock/price
 SHOPIFY_CREATE_COLLECTIONS = os.getenv("SHOPIFY_CREATE_COLLECTIONS", "false").lower() == "true"

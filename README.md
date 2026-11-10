@@ -31,7 +31,7 @@ python main.py upload all                 # only upload Excel rows without a Sho
 python main.py schedule                   # create the Windows tasks: list Sunday 02:00, sync daily 06:00
 ```
 Other: `scrape <supplier>` (Excel only, no Shopify), `login <supplier>`, `probe <supplier> <url>`, `cleanup`.
-Every start prints `Supplier scraper version ...` – it should say **r12**.
+Every start prints `Supplier scraper version ...` – it should say **r13**.
 
 - **Keep the Excel file closed while it runs.** If it is open, data goes to `Supplier Data - backup.xlsx` and is
   copied into the main file on the next run.
@@ -50,8 +50,9 @@ Every start prints `Supplier scraper version ...` – it should say **r12**.
    SHOPIFY_CLIENT_SECRET=shpss_...
    SHOPIFY_PRODUCT_STATUS=DRAFT
    ```
-   The access token is fetched with these, saved in `.shopify_token` and reused. A new token is requested only
-   when Shopify refuses the saved one (they expire after 24 h). Changed the credentials? Delete `.shopify_token`.
+   Every API call uses the token in **`access token.txt`**. When Shopify refuses it (tokens expire after ~24 h),
+   a new one is requested with the client ID + secret and written into `access token.txt`.
+   Changed the credentials? Empty or delete `access token.txt`.
 4. `python main.py shopify-check` must say "Shopify is ready".
 
 **Safety switches in `.env`** – what the program may change in your store:

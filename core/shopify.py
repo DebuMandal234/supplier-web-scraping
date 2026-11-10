@@ -2,8 +2,17 @@
 
 Uses the GraphQL Admin API (the REST product endpoints are legacy/deprecated).
 Credentials come from .env: SHOPIFY_STORE + SHOPIFY_ACCESS_TOKEN, or SHOPIFY_CLIENT_ID + SHOPIFY_CLIENT_SECRET.
-Needed app scopes: read_products, write_products, read_inventory, write_inventory, read_locations.
+Needed app scopes: write_products, write_inventory (+ read_locations to set stock quantities).
+
+Access token: with SHOPIFY_CLIENT_ID + SHOPIFY_CLIENT_SECRET the token is requested once, saved in the file
+.shopify_token and reused; a new one is requested only when Shopify refuses the saved one (or it has expired).
+
+What this program changes in Shopify:
+  * STEP 1: creates products (status DRAFT) - nothing else.
+  * STEP 2 (sync): prices/stock of products it created - only when SHOPIFY_ALLOW_SYNC=true in .env.
+  * supplier collections - only when SHOPIFY_CREATE_COLLECTIONS=true in .env.
 """
+import os
 import logging
 import re
 import time
@@ -51,20 +60,46 @@ class ShopifyClient:
         if not (config.SHOPIFY_ACCESS_TOKEN or (config.SHOPIFY_CLIENT_ID and config.SHOPIFY_CLIENT_SECRET)):
             raise ShopifyError("Set SHOPIFY_ACCESS_TOKEN (or SHOPIFY_CLIENT_ID + SHOPIFY_CLIENT_SECRET) in .env")
         self.url = f"https://{self.store}/admin/api/{config.SHOPIFY_API_VERSION}/graphql.json"
-        self.token = config.SHOPIFY_ACCESS_TOKEN or self._client_credentials_token()
+        self.uses_client_credentials = bool(config.SHOPIFY_CLIENT_ID and config.SHOPIFY_CLIENT_SECRET)
+        self.token = self._saved_token() if self.uses_client_credentials else config.SHOPIFY_ACCESS_TOKEN
+        if not self.token:
+            self.token = self._client_credentials_token()
         self._location = None
+        self._location_warned = False
         self._collections = {}
 
     # ------------------------------------------------------------------ transport
+    def _saved_token(self):
+        """Token saved by an earlier run, if it is for this store and not expired (5 minutes margin)."""
+        try:
+            with open(config.SHOPIFY_TOKEN_FILE, encoding="utf-8") as f:
+                parts = f.read().split()
+            token, expires, store = parts[0], float(parts[1]), (parts[2] if len(parts) > 2 else self.store)
+            if store == self.store and time.time() < expires - 300:
+                return token
+        except (OSError, ValueError, IndexError):
+            pass
+        return ""
+
     def _client_credentials_token(self):
+        """Ask Shopify for a new access token and save it for the next runs."""
         r = requests.post(f"https://{self.store}/admin/oauth/access_token", timeout=30, json={
             "client_id": config.SHOPIFY_CLIENT_ID, "client_secret": config.SHOPIFY_CLIENT_SECRET,
             "grant_type": "client_credentials"})
         if not r.ok:
             raise ShopifyError(f"Shopify login (client credentials) failed: HTTP {r.status_code} {r.text[:200]}")
-        return r.json()["access_token"]
+        data = r.json()
+        token = data["access_token"]
+        try:
+            with open(config.SHOPIFY_TOKEN_FILE, "w", encoding="utf-8") as f:
+                f.write(f"{token}\n{time.time() + float(data.get('expires_in') or 86399):.0f}\n{self.store}\n")
+        except OSError as e:
+            log.warning("could not save the Shopify token file: %s", e)
+        log.info("Got a new Shopify access token (saved in %s)", os.path.basename(config.SHOPIFY_TOKEN_FILE))
+        return token
 
     def gql(self, query, variables=None, retries=6):
+        refreshed = False
         for attempt in range(retries):
             try:
                 r = requests.post(self.url, json={"query": query, "variables": variables or {}}, timeout=90,
@@ -74,8 +109,9 @@ class ShopifyClient:
                     raise ShopifyError(f"network error: {e}")
                 time.sleep(3 * (attempt + 1))
                 continue
-            if r.status_code == 401 and config.SHOPIFY_CLIENT_ID and attempt == 0:
-                self.token = self._client_credentials_token()   # client-credential tokens expire: get a new one
+            if r.status_code == 401 and self.uses_client_credentials and not refreshed:
+                refreshed = True
+                self.token = self._client_credentials_token()   # saved token expired/revoked: get a new one once
                 continue
             if r.status_code in (429, 502, 503, 504):
                 time.sleep(2 * (attempt + 1))
@@ -103,19 +139,28 @@ class ShopifyClient:
         d = self.gql("""{ shop { name myshopifyDomain currencyCode }
                           currentAppInstallation { accessScopes { handle } } }""")
         scopes = sorted(s["handle"] for s in d["currentAppInstallation"]["accessScopes"])
-        need = ["read_inventory", "read_locations", "read_products", "write_inventory", "write_products"]
+        need = ["read_products", "write_products", "read_inventory", "write_inventory"]
         have = set(scopes) | {s.replace("write_", "read_") for s in scopes}   # write_x includes read_x
         missing = [s for s in need if s not in have]
         return d["shop"], scopes, missing, self.location_id()
 
     def location_id(self):
-        if self._location:
-            return self._location
+        if self._location is not None:
+            return self._location or None   # "" = no permission to read locations (warned once)
         if config.SHOPIFY_LOCATION_ID:
             lid = config.SHOPIFY_LOCATION_ID
             self._location = lid if lid.startswith("gid://") else f"gid://shopify/Location/{lid}"
             return self._location
-        d = self.gql("{ locations(first: 5, includeInactive: false) { nodes { id name isActive } } }")
+        try:
+            d = self.gql("{ locations(first: 5, includeInactive: false) { nodes { id name isActive } } }")
+        except ShopifyError as e:
+            if not self._location_warned:
+                self._location_warned = True
+                log.warning("Cannot read the store's locations (%s). Products are listed WITHOUT stock "
+                            "quantities. Fix: add the 'read_locations' scope to the app, or put "
+                            "SHOPIFY_LOCATION_ID=<number> in .env.", str(e)[:120])
+            self._location = ""
+            return None
         nodes = d["locations"]["nodes"]
         if not nodes:
             raise ShopifyError("No active location in the store (needed for stock).")
@@ -166,7 +211,7 @@ class ShopifyClient:
     def product_input(self, p):
         supplier_name = config.SUPPLIER_NAMES.get(p.supplier, p.supplier)
         mk = config.markup(p.supplier)
-        loc = self.location_id()
+        loc = self.location_id()   # None = no permission to read locations: list without stock numbers
         names = [n for n in (p.option_names or [])][:3]
         variants_in = p.variants or [{"options": [], "sku": p.sku, "price": p.price, "compare_at_price": p.rrp,
                                       "barcode": p.ean, "weight": p.weight, "in_stock": None}]
@@ -186,9 +231,10 @@ class ShopifyClient:
                 "optionValues": [{"optionName": n, "name": o} for n, o in zip(names, opts)],
                 "inventoryPolicy": "DENY",
                 "inventoryItem": {"tracked": True, "requiresShipping": True},
-                "inventoryQuantities": [{"locationId": loc, "name": "available",
-                                         "quantity": stock_qty(v.get("in_stock"), p.availability)}],
             }
+            if loc:
+                var["inventoryQuantities"] = [{"locationId": loc, "name": "available",
+                                               "quantity": stock_qty(v.get("in_stock"), p.availability)}]
             if cost is not None:
                 var["price"] = f"{float(cost) * mk:.2f}"
                 var["inventoryItem"]["cost"] = cost
@@ -220,7 +266,7 @@ class ShopifyClient:
             "title": p.title[:255],
             "descriptionHtml": body_html(p),
             "vendor": (p.brand or supplier_name)[:255],
-            "productType": (p.category or supplier_name)[:255],
+            "productType": supplier_name[:255],   # supplier name = the product's category in Shopify
             "tags": tags[:250],
             "status": config.SHOPIFY_PRODUCT_STATUS if config.SHOPIFY_PRODUCT_STATUS in
             ("DRAFT", "ACTIVE", "ARCHIVED") else "DRAFT",
@@ -229,10 +275,88 @@ class ShopifyClient:
             "variants": variants,
             "files": files,
             "metafields": meta,
-            "collections": [self.supplier_collection(supplier_name)],
             "seo": {"title": p.title[:70], "description": (p.meta_description or p.description_text or "")[:320]},
         }
+        if config.SHOPIFY_CREATE_COLLECTIONS:
+            inp["collections"] = [self.supplier_collection(supplier_name)]
         return inp
+
+    # ---- batch: 1 lookup call + 1 create call for up to 20 products
+    def find_existing_many(self, products):
+        """One API call: which of these products are already in Shopify (by SKU, else by title + vendor)?
+        Returns a list of product IDs / None, same order."""
+        parts, var_defs, variables, keys = [], [], {}, []
+        for i, p in enumerate(products):
+            sku = next((s for s in [p.sku] + [v.get("sku") for v in p.variants] if s), "")
+            if sku:
+                q = 'sku:"{}"'.format(str(sku).replace('"', ""))
+                parts.append(f"c{i}: productVariants(first: 1, query: $q{i}) {{ nodes {{ sku product {{ id }} }} }}")
+            else:
+                vendor = p.brand or config.SUPPLIER_NAMES.get(p.supplier, p.supplier)
+                q = 'title:"{}" AND vendor:"{}"'.format(p.title.replace('"', ""), vendor.replace('"', ""))
+                parts.append(f"c{i}: products(first: 5, query: $q{i}) {{ nodes {{ id title }} }}")
+            var_defs.append(f"$q{i}: String!")
+            variables[f"q{i}"] = q
+            keys.append(sku)
+        if not parts:
+            return []
+        d = self.gql(f"query({', '.join(var_defs)}) {{ {' '.join(parts)} }}", variables)
+        out = []
+        for i, p in enumerate(products):
+            nodes = (d.get(f"c{i}") or {}).get("nodes") or []
+            found = None
+            for n in nodes:
+                if keys[i] and (n.get("sku") or "").lower() == str(keys[i]).lower():
+                    found = n["product"]["id"]
+                elif not keys[i] and n.get("title", "").strip().lower() == p.title.strip().lower():
+                    found = n["id"]
+                if found:
+                    break
+            out.append(found)
+        return out
+
+    def create_products(self, products):
+        """Create up to SHOPIFY_BATCH_SIZE products as DRAFT in ONE API call (one aliased productSet per product).
+        Products already in Shopify are linked, not created again.
+        Returns [(product_id or None, note or error text)] in the same order."""
+        results = [None] * len(products)
+        existing = self.find_existing_many(products)
+        todo = []
+        for i, (p, pid) in enumerate(zip(products, existing)):
+            if pid:
+                results[i] = (pid, "already in Shopify - linked")
+            else:
+                try:
+                    todo.append((i, self.product_input(p)))
+                except ShopifyError as e:
+                    results[i] = (None, f"ERROR: {e}")
+        self._create_inputs(todo, results)
+        return results
+
+    def _create_inputs(self, todo, results):
+        if not todo:
+            return
+        defs = ", ".join(f"$i{n}: ProductSetInput!" for n in range(len(todo)))
+        body = " ".join(f"p{n}: productSet(synchronous: true, input: $i{n}) "
+                        f"{{ product {{ id }} userErrors {{ field message code }} }}" for n in range(len(todo)))
+        try:
+            d = self.gql(f"mutation({defs}) {{ {body} }}", {f"i{n}": inp for n, (_, inp) in enumerate(todo)})
+        except ShopifyError as e:
+            if len(todo) > 1 and re.search(r"cost|complex|too large|exceed|timeout|HTTP 5", str(e), re.I):
+                half = len(todo) // 2   # batch too big for one call: split it in two and try again
+                log.warning("Batch of %d too big for one call (%s) - sending as 2 calls", len(todo), str(e)[:80])
+                self._create_inputs(todo[:half], results)
+                self._create_inputs(todo[half:], results)
+                return
+            raise
+        for n, (i, _) in enumerate(todo):
+            res = d.get(f"p{n}") or {}
+            errs = res.get("userErrors") or []
+            if errs or not (res.get("product") or {}).get("id"):
+                msg = "; ".join(f"{'.'.join(map(str, e.get('field') or []))}: {e['message']}" for e in errs)
+                results[i] = (None, f"ERROR: {msg or 'no product returned'}"[:500])
+            else:
+                results[i] = (res["product"]["id"], "listed")
 
     def create_product(self, p):
         """Create one product (DRAFT). Returns (product_id, note). Raises ShopifyError on failure."""

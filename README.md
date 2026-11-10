@@ -8,7 +8,7 @@ Shopify. Column **A** of every tab is the **Shopify product ID**.
 
 | Step | Command | When | What it does |
 |---|---|---|---|
-| 1 – list | `python main.py list all` | now, then **every Sunday** | browses the supplier sites, saves **new** products to Excel and creates them in Shopify as **DRAFT**, in batches of 20 (the last, smaller batch is uploaded at the end). The Shopify ID goes to column A. |
+| 1 – list | `python main.py list all` | now, then **every Sunday** | browses the supplier sites, saves **new** products to Excel and creates them in Shopify as **DRAFT**, in batches of 20 – **one API call per batch** (plus one quick duplicate check). The last, smaller batch is uploaded at the end. The Shopify ID goes to column A. |
 | 2 – sync | `python main.py sync all` | **every day** | no browsing: opens each listed product **directly by its link**, reads price + stock and sends only the changes to Shopify. |
 
 **No duplicates:** a product is skipped when its link or its SKU is already in the supplier's tab, and it is
@@ -31,7 +31,7 @@ python main.py upload all                 # only upload Excel rows without a Sho
 python main.py schedule                   # create the Windows tasks: list Sunday 02:00, sync daily 06:00
 ```
 Other: `scrape <supplier>` (Excel only, no Shopify), `login <supplier>`, `probe <supplier> <url>`, `cleanup`.
-Every start prints `Supplier scraper version ...` – it should say **r9**.
+Every start prints `Supplier scraper version ...` – it should say **r10**.
 
 - **Keep the Excel file closed while it runs.** If it is open, data goes to `Supplier Data - backup.xlsx` and is
   copied into the main file on the next run.
@@ -41,14 +41,28 @@ Every start prints `Supplier scraper version ...` – it should say **r9**.
 ## Shopify set-up (once)
 
 1. Shopify admin → Settings → Apps → Develop apps (or the Dev Dashboard) → create an app for your store.
-2. Admin API scopes: `read_products`, `write_products`, `read_inventory`, `write_inventory`, `read_locations`.
-3. Install it and put the credentials in `.env` (never in the code, never on GitHub):
+2. Admin API scopes: `write_products`, `write_inventory`, and `read_locations` (without it products are listed
+   without stock numbers – or put `SHOPIFY_LOCATION_ID=<number>` in `.env`).
+3. Put the credentials in `.env` (never in the code, never on GitHub):
    ```
    SHOPIFY_STORE=yourstore.myshopify.com
-   SHOPIFY_ACCESS_TOKEN=shpat_...          # or SHOPIFY_CLIENT_ID + SHOPIFY_CLIENT_SECRET
+   SHOPIFY_CLIENT_ID=...
+   SHOPIFY_CLIENT_SECRET=shpss_...
    SHOPIFY_PRODUCT_STATUS=DRAFT
    ```
+   The access token is fetched with these, saved in `.shopify_token` and reused. A new token is requested only
+   when Shopify refuses the saved one (they expire after 24 h). Changed the credentials? Delete `.shopify_token`.
 4. `python main.py shopify-check` must say "Shopify is ready".
+
+**Safety switches in `.env`** – what the program may change in your store:
+
+| Setting | Default | Allows |
+|---|---|---|
+| (always) | – | creating new products as `SHOPIFY_PRODUCT_STATUS` (DRAFT) |
+| `SHOPIFY_ALLOW_SYNC` | false | STEP 2: price/stock updates of the products it listed |
+| `SHOPIFY_CREATE_COLLECTIONS` | false | creating one collection per supplier and adding its products |
+
+Products carry the supplier name as their product type, vendor (unless a brand is shown) and tag.
 
 ## Prices and stock (settings in `.env`)
 

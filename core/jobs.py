@@ -29,28 +29,41 @@ def _now():
 
 # ---------------------------------------------------------------------------------------------- STEP 1
 def upload_rows(name, sheet, shop, rows):
-    """Create the products of these Excel rows in Shopify and write their IDs to column A."""
-    ok = failed = 0
+    """Create the products of these Excel rows in Shopify (ONE API call for the batch) and write their IDs
+    to column A."""
+    batch = []
     for r in rows:
         d = sheet.row(r)
         if str(d.get(SHOPIFY_ID_LABEL) or "").strip():
             continue
-        title = d.get("Title") or d.get(URL_LABEL)
-        try:
-            p = product_from_row(d)
-            p.supplier = p.supplier or name
-            pid, note = shop.create_product(p)
+        p = product_from_row(d)
+        p.supplier = p.supplier or name
+        batch.append((r, p))
+    if not batch:
+        return 0, 0
+    log.info("[%s] Shopify: listing a batch of %d products as %s", name, len(batch), config.SHOPIFY_PRODUCT_STATUS)
+    try:
+        results = shop.create_products([p for _, p in batch])
+    except ShopifyError as e:
+        for r, _ in batch:
+            sheet.set(r, STATUS_LABEL, f"ERROR {_now()}: {e}")
+        sheet.flush()
+        log.error("[%s] Shopify batch failed (%s) - these %d products are retried on the next run",
+                  name, e, len(batch))
+        if "refused" in str(e) or "scope" in str(e).lower() or "login" in str(e).lower():
+            raise   # wrong credentials / permission: no point trying more batches
+        return 0, len(batch)
+    ok = failed = 0
+    for (r, p), (pid, note) in zip(batch, results):
+        if pid:
             sheet.set(r, SHOPIFY_ID_LABEL, pid.rsplit("/", 1)[-1])
             sheet.set(r, STATUS_LABEL, f"{note} {_now()}")
             ok += 1
-            log.info("[%s]   Shopify: %s  %s", name, note, title)
-        except ShopifyError as e:
+            log.info("[%s]   %s: %s", name, note, p.title)
+        else:
+            sheet.set(r, STATUS_LABEL, f"{note} ({_now()})")
             failed += 1
-            sheet.set(r, STATUS_LABEL, f"ERROR {_now()}: {e}")
-            log.error("[%s]   Shopify upload failed for '%s': %s", name, title, e)
-            if "refused" in str(e) or "scope" in str(e).lower():
-                sheet.flush()
-                raise   # wrong token / missing permission: no point trying the next products
+            log.error("[%s]   not listed: %s -> %s", name, p.title, note)
     sheet.flush()
     log.info("[%s] Shopify batch done: %d listed, %d failed (failed ones are retried on the next run)",
              name, ok, failed)
@@ -199,6 +212,10 @@ def zero_stock(name, shop, pid):
 
 def run_sync(name, scraper_cls, make_driver, shop, limit=None):
     """STEP 2 for one supplier: open every listed product by its link and update Shopify."""
+    if not config.SHOPIFY_ALLOW_SYNC:
+        log.error("[%s] STEP 2 (stock/price updates) is switched OFF. When you allow it, set "
+                  "SHOPIFY_ALLOW_SYNC=true in .env.", name)
+        return None, None
     sheet = excel.SupplierSheet(name)
     todo = [(r, d) for r, d in sheet.rows() if str(d.get(SHOPIFY_ID_LABEL) or "").strip() and d.get(URL_LABEL)]
     if limit:

@@ -40,7 +40,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logging.getLogger("urllib3").setLevel(logging.ERROR)  # hide harmless "Retrying..." noise after Ctrl+C
 log = logging.getLogger("main")
 
-VERSION = "2026-11-10 r9"  # printed at every start: tells you which version of the code is running
+VERSION = "2026-11-10 r10"  # printed at every start: tells you which version of the code is running
 
 
 def get_scraper_class(name):
@@ -200,11 +200,14 @@ def cmd_shopify_check(args):
         return
     log.info("Connected to %s (%s), currency %s", info["name"], info["myshopifyDomain"], info["currencyCode"])
     log.info("App permissions: %s", ", ".join(scopes))
-    log.info("Stock location: %s", loc)
+    log.info("Stock location: %s", loc or "NOT AVAILABLE - products are listed without stock numbers "
+             "(add the read_locations scope or set SHOPIFY_LOCATION_ID in .env)")
     if missing:
         log.error("MISSING permissions: %s - add them to the app in Shopify, then install/update it", ", ".join(missing))
     else:
-        log.info("Shopify is ready. New products will be created as %s.", config.SHOPIFY_PRODUCT_STATUS)
+        log.info("Shopify is ready. New products will be created as %s. Stock/price sync: %s. "
+                 "Collections: %s.", config.SHOPIFY_PRODUCT_STATUS,
+                 "ON" if config.SHOPIFY_ALLOW_SYNC else "OFF", "ON" if config.SHOPIFY_CREATE_COLLECTIONS else "OFF")
 
 
 def cmd_list(args):
@@ -254,6 +257,10 @@ def cmd_sync(args):
     """STEP 2: price + stock of listed products -> Shopify."""
     from core import jobs
     log.info("Supplier scraper version %s - STEP 2 (daily price + stock sync)", VERSION)
+    if not config.SHOPIFY_ALLOW_SYNC:
+        log.error("STEP 2 (stock/price updates in Shopify) is switched OFF. To allow it, set "
+                  "SHOPIFY_ALLOW_SYNC=true in .env.")
+        return
     shop = _shop()
     if not shop:
         return

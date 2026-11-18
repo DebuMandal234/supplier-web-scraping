@@ -49,7 +49,8 @@ def stock_qty(in_stock, availability, qty=None):
     m = re.search(r"(\d+)\s*(?:\+\s*)?(?:in stock|available|left|units?)", t)
     if in_stock is False:
         return 0
-    if re.search(r"out\s*of\s*stock|outofstock|sold\s*out|unavailable|discontinued|no longer", t):
+    if re.search(r"out\s*of\s*stock|outofstock|sold\s*out|unavailable|discontinued|no longer|back\s*-?\s*order|"
+                 r"pre\s*-?\s*order|due in|awaiting stock", t):
         return 0 if in_stock is not True else config.STOCK_IN_STOCK_QTY
     if m:
         return max(0, int(m.group(1)) - config.STOCK_BUFFER)

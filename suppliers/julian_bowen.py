@@ -202,7 +202,10 @@ class JulianBowenScraper(BaseScraper):
         else:
             availability = fv.get("stockMessage") or "In stock"
 
-        tags = [n for n in [fv.get("brand")] if n]
+        brand = fv.get("brand")
+        if isinstance(brand, dict):
+            brand = brand.get("Name") or brand.get("name") or ""
+        tags = [str(brand).strip()] if brand and str(brand).strip().lower() != "julian bowen" else []
         p = Product(
             supplier=self.name, url=url, title=title, handle=url.rstrip("/").rsplit("/", 1)[-1].lower(),
             sku=first.get("sku", ""), ean=first.get("barcode", ""), brand="Julian Bowen",

@@ -57,7 +57,7 @@ def _values(p):
         "shopify_price": payload["product"]["variants"][0].get("price", ""),
         "variant_count": len(payload["product"]["variants"]),
         "option_names_text": ", ".join(p.option_names),
-        "variants_json": json.dumps(p.variants, ensure_ascii=False) if len(p.variants) > 1 else "",
+        "variants_json": json.dumps(p.variants, ensure_ascii=False) if p.variants else "",
         "image_count": len(p.images),
         "images_text": ", ".join(p.images),
         "options_json": json.dumps(p.options, ensure_ascii=False) if p.options else "",

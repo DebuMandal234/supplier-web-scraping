@@ -172,7 +172,7 @@ def fix_stock(name, sheet, shop):
             skipped += 1      # not created by this program (e.g. "already in Shopify - linked"): left alone
             continue
         p = product_from_row(d)
-        if not re.search(r"\d+\s+in stock|out of stock|made to order", p.availability or "", re.I) \
+        if not re.search(r"\d+\s+in stock|out of stock|made to order|back\s*-?\s*order", p.availability or "", re.I) \
                 and not any(v.get("in_stock") is False for v in p.variants or []):
             log.info("[%s]   no stock number in Excel (\"%s\") - left as is, the daily sync will set it: %s",
                      name, p.availability, d.get("Title"))

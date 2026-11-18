@@ -41,7 +41,7 @@ const path = arguments[0];
       freeStock: typeof p.FreeStock === 'number' ? p.FreeStock : null, stockLevel: p.StockLevel || '',
       stockMessage: txt(parse(p.StockMessage || '').body), purchasable: p.Purchasable !== false,
       nextQty: cf['Next Available Quantity'] || '', dueIn: due ? new Date(+due).toISOString().slice(0, 10) : '',
-      gtin: p.GTIN || p.Barcode || '', brand: p.Brand || '',
+      gtin: p.GTIN || p.Barcode || '', brand: (p.Brand && typeof p.Brand === 'object') ? (p.Brand.Name || p.Brand.name || '') : (p.Brand || ''),
     });
   }
 

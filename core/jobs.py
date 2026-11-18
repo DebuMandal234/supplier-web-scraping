@@ -153,6 +153,51 @@ def run_list(name, scraper_cls, make_driver, shop, limit=None):
     return scraper, sheet
 
 
+def fix_stock(name, sheet, shop):
+    """Set the stock quantity in Shopify for products THIS program listed (status 'listed ...'), from the
+    numbers already in Excel (no browsing). Used when they were listed before the stock location was known."""
+    if not shop.location_id():
+        raise ShopifyError("no stock location - add the read_locations scope to the Shopify app or put "
+                           "SHOPIFY_LOCATION_ID=<number> in .env")
+    done = skipped = 0
+    for r, d in sheet.rows():
+        pid = str(d.get(SHOPIFY_ID_LABEL) or "").strip()
+        if not pid or not str(d.get(STATUS_LABEL) or "").startswith("listed"):
+            skipped += 1      # not created by this program (e.g. "already in Shopify - linked"): left alone
+            continue
+        p = product_from_row(d)
+        if not re.search(r"\d+\s+in stock|out of stock|made to order", p.availability or "", re.I) \
+                and not any(v.get("in_stock") is False for v in p.variants or []):
+            log.info("[%s]   no stock number in Excel (\"%s\") - left as is, the daily sync will set it: %s",
+                     name, p.availability, d.get("Title"))
+            skipped += 1
+            continue
+        gid = pid if pid.startswith("gid://") else f"gid://shopify/Product/{pid}"
+        sp = shop.product_variants(gid)
+        if not sp:
+            log.warning("[%s]   not found in Shopify: %s", name, d.get("Title"))
+            continue
+        items = []
+        for sv, v in _match(sp["variants"]["nodes"], p.variants or []):
+            if v is None:
+                continue
+            qty = stock_qty(v.get("in_stock"), p.availability)
+            level = sv["inventoryItem"].get("inventoryLevel")
+            if level is None:
+                shop.activate_inventory(sv["inventoryItem"]["id"])
+                cur = 0
+            else:
+                cur = (level.get("quantities") or [{}])[0].get("quantity")
+            if cur != qty:
+                items.append((sv["inventoryItem"]["id"], qty, cur))
+        shop.set_quantities(items, note=f"{name}/fix-stock")
+        done += 1
+        log.info("[%s]   %s -> %s", name, d.get("Title"), ", ".join(str(q) for _, q, _ in items) or "already right")
+    log.info("[%s] fix-stock done: %d products updated, %d left alone (not created by this program, or no stock "
+             "number in Excel)",
+             name, done, skipped)
+
+
 # ---------------------------------------------------------------------------------------------- STEP 2
 def _missing_runs(status):
     m = re.search(r"missing on supplier site \((\d+)", str(status or ""))

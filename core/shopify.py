@@ -167,9 +167,14 @@ class ShopifyClient:
         try:
             d = self.gql("{ locations(first: 5, includeInactive: false) { nodes { id name isActive } } }")
         except ShopifyError as e:
+            # no read_locations permission: take the location that existing products keep their stock at
+            loc = self._location_from_inventory()
+            if loc:
+                self._location = loc
+                return loc
             if not self._location_warned:
                 self._location_warned = True
-                log.warning("Cannot read the store's locations (%s). Products are listed WITHOUT stock "
+                log.warning("Cannot find the store's stock location (%s). Products are listed WITHOUT stock "
                             "quantities. Fix: add the 'read_locations' scope to the app, or put "
                             "SHOPIFY_LOCATION_ID=<number> in .env.", str(e)[:120])
             self._location = ""
@@ -180,6 +185,23 @@ class ShopifyClient:
         self._location = nodes[0]["id"]
         log.info("Shopify stock location: %s (%s)", nodes[0]["name"], self._location)
         return self._location
+
+    def _location_from_inventory(self):
+        """Location id from the inventory levels of existing products (works with read_inventory only)."""
+        q = """{ productVariants(first: 25) { nodes { inventoryItem {
+                  inventoryLevels(first: 1) { nodes { location { id } } } } } } }"""
+        try:
+            d = self.gql(q)
+        except ShopifyError as e:
+            log.debug("location from inventory failed: %s", e)
+            return None
+        for n in d["productVariants"]["nodes"]:
+            for lv in (((n.get("inventoryItem") or {}).get("inventoryLevels") or {}).get("nodes") or []):
+                lid = (lv.get("location") or {}).get("id")
+                if lid:
+                    log.info("Shopify stock location (from existing products): %s", lid)
+                    return lid
+        return None
 
     def supplier_collection(self, name):
         """ID of the manual collection named after the supplier (created when missing)."""

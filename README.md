@@ -28,10 +28,11 @@ python main.py list all                   # STEP 1, all five one after another
 python main.py sync flair --limit 5       # small test of STEP 2
 python main.py sync all                   # STEP 2, all suppliers
 python main.py upload all                 # only upload Excel rows without a Shopify ID (no browsing)
+python main.py fix-stock beehive         # set Shopify stock of drafts this program listed, from Excel
 python main.py schedule                   # create the Windows tasks: list Sunday 02:00, sync daily 06:00
 ```
 Other: `scrape <supplier>` (Excel only, no Shopify), `login <supplier>`, `probe <supplier> <url>`, `cleanup`.
-Every start prints `Supplier scraper version ...` – it should say **r23**.
+Every start prints `Supplier scraper version ...` – it should say **r24**.
 
 - **Keep the Excel file closed while it runs.** If it is open, data goes to `Supplier Data - backup.xlsx` and is
   copied into the main file on the next run.

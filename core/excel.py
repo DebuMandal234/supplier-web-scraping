@@ -412,6 +412,7 @@ def product_from_row(d):
         description_text=txt("Description (text)"), meta_description=txt("Meta description"), images=images,
         options=js("Dropdown options (JSON)", {}), specs=js("Specs (JSON)", {}),
         option_names=names if variants else [], variants=variants,
+        tags=[t.strip() for t in txt("Tags").split(",") if t.strip()],
     )
     if not p.variants:
         p.variants = [{"options": [], "sku": p.sku, "price": p.price, "compare_at_price": p.rrp,

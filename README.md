@@ -31,7 +31,7 @@ python main.py upload all                 # only upload Excel rows without a Sho
 python main.py schedule                   # create the Windows tasks: list Sunday 02:00, sync daily 06:00
 ```
 Other: `scrape <supplier>` (Excel only, no Shopify), `login <supplier>`, `probe <supplier> <url>`, `cleanup`.
-Every start prints `Supplier scraper version ...` – it should say **r22**.
+Every start prints `Supplier scraper version ...` – it should say **r23**.
 
 - **Keep the Excel file closed while it runs.** If it is open, data goes to `Supplier Data - backup.xlsx` and is
   copied into the main file on the next run.
@@ -110,6 +110,12 @@ options but none could be read, the page is saved as `data/debug/<supplier>_vari
 log says so – send that file to Claude to adjust the reader.
 
 ## Supplier notes
+
+**Beehive** (portal.beehivefurniture.co.uk, a Shopify store): after login the whole catalogue (about 920
+products) is read from the portal's product feed – trade price, SKU, all images, description – no category
+browsing. Stock: exact numbers from Beehive's Stock Feed API when `BEEHIVE_STOCK_TOKEN` is in `.env` (also RRP
+and specs), otherwise from each product page ("14 in stock"). Dimensions come from each page (bundles list
+every piece). "Special Order" sofas are made to order (4–6 weeks): one variant, tagged "Made to order".
 
 Per-supplier rules live in `suppliers\<supplier>.py`. Flair: on each category page every product link is opened,
 read and saved straight away, then the next page; filter links are ignored; prices are trade prices ex VAT.

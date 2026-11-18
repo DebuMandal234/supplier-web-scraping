@@ -264,7 +264,8 @@ class ShopifyClient:
             variants.append(var)
 
         tags = []
-        for t in [supplier_name, p.brand, p.category] + [c.strip() for c in (p.breadcrumbs or "").split(">")]:
+        for t in [supplier_name, p.brand, p.category] + [c.strip() for c in (p.breadcrumbs or "").split(">")] \
+                + list(p.tags or []):
             t = (t or "").strip()[:255]
             if t and t.lower() not in [x.lower() for x in tags]:
                 tags.append(t)

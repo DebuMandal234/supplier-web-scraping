@@ -87,7 +87,7 @@ def build_payload(p, markup=None, status=None):
             images.append({"src": u, "alt": p.title[:250], "position": len(images) + 1})
 
     tags = []
-    for t in [p.supplier, p.brand, p.category] + [c.strip() for c in (p.breadcrumbs or "").split(">")]:
+    for t in [p.supplier, p.brand, p.category] + [c.strip() for c in (p.breadcrumbs or "").split(">")] + list(p.tags or []):
         t = (t or "").strip()
         if t and t.lower() not in [x.lower() for x in tags]:
             tags.append(t)

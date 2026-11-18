@@ -32,7 +32,7 @@ python main.py fix-stock beehive         # set Shopify stock of drafts this prog
 python main.py schedule                   # create the Windows tasks: list Sunday 02:00, sync daily 06:00
 ```
 Other: `scrape <supplier>` (Excel only, no Shopify), `login <supplier>`, `probe <supplier> <url>`, `cleanup`.
-Every start prints `Supplier scraper version ...` – it should say **r27**.
+Every start prints `Supplier scraper version ...` – it should say **r28**.
 
 - **Keep the Excel file closed while it runs.** If it is open, data goes to `Supplier Data - backup.xlsx` and is
   copied into the main file on the next run.
@@ -94,8 +94,13 @@ weight, stock tracked with "stop selling when out of stock", and `supplier.*` me
 - Flair: exact number when a size/colour is running low ("Only 2 left"); otherwise in stock = `STOCK_IN_STOCK_QTY`;
   a size/colour that is sold out disappears from Flair's page and is set to 0 by the daily sync.
 - Birlea: exact stock number of every product (the shop's own product data, e.g. 201).
-- Julian Bowen: the number when the page shows "N in stock", otherwise in stock = `STOCK_IN_STOCK_QTY`,
-  out of stock = 0.
+- Julian Bowen: exact free stock of every finish/size (e.g. 35); "Back Order" = 0.
+
+**Julian Bowen** (`suppliers/julian_bowen.py` + `suppliers/jb_product.js`, GOb2b trade shop): the product list comes
+from every menu category with the shop's own paging (about 875 products, ~3 minutes). Each product is read with
+the same data services the shop's product page uses: every finish/size as a Shopify variant with its own SKU,
+trade price (ex VAT), exact stock and photos (1200 x 1200), plus the description, dimensions, weight (from the
+description), product type = its category (e.g. "Dining Chairs") and the category path as tags.
 
 **Birlea** (`suppliers/birlea.py`, Sana Commerce shop): every page carries its full product data as JSON. The
 scraper reads the whole product list from the menu categories (about 655 products), then for each product:
@@ -113,7 +118,7 @@ Read in this order, the first that works wins (`core/variant_sources.py`):
 1. Shopify stores (Beehive): the product's `.js` data – real option names, SKU, price, stock per variant.
 2. WooCommerce sites: the variation form, or the radio-button variation list.
 3. schema.org `hasVariant` data in the page.
-4. Any other site (Julian Bowen, …): the option dropdowns / radio buttons next to "Add to basket" are
+4. Any other site: the option dropdowns / radio buttons next to "Add to basket" are
    switched one by one (max 40 combinations) and the price, SKU and stock shown are read.
 Flair: its own option data first (Size first, then Color – e.g. Margot: 2 sizes x 3 colours = 6 variants in
 ONE Shopify product), then the above. Flair also has single-colour copies of such products (e.g. "Margot

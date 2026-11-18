@@ -6,9 +6,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"))   # works from any folder (e.g. Windows Task Scheduler)
 
 
-SUPPLIERS = ["beehive", "birlea", "heartlands", "julian_bowen", "flair"]
+SUPPLIERS = ["beehive", "birlea", "julian_bowen", "flair"]   # Heartlands removed 2026-11-18
 SUPPLIER_NAMES = {  # name shown in Shopify (vendor tag + collection)
-    "beehive": "Beehive", "birlea": "Birlea", "heartlands": "Heartlands",
+    "beehive": "Beehive", "birlea": "Birlea",
     "julian_bowen": "Julian Bowen", "flair": "Flair",
 }
 

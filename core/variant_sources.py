@@ -1,7 +1,7 @@
 """Variant readers used for EVERY supplier (tried in this order, first one that finds variants wins):
 
   1. Shopify stores (e.g. Beehive):  /products/<handle>.js  -> real option names, every variant's SKU/price/stock
-  2. WooCommerce (e.g. Heartlands):  variation form data, or the "WPC Variation Radio Buttons" (woovr) list
+  2. WooCommerce:  variation form data, or the "WPC Variation Radio Buttons" (woovr) list
   3. schema.org JSON-LD  hasVariant
   4. Any other site (e.g. Birlea, Julian Bowen): the option dropdowns / radio buttons next to "Add to basket"
      are switched one by one and the price, SKU and stock shown for each choice are read.

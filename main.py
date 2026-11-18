@@ -14,9 +14,9 @@ Other
   python main.py shopify-check                 # test the Shopify credentials / permissions
   python main.py upload all                    # only upload Excel rows that have no Shopify ID yet
   python main.py schedule                      # create the Windows tasks (Sunday list + daily sync)
-  python main.py login heartlands              # just test the login (opens Chrome)
-  python main.py scrape heartlands --limit 5   # Excel only, no Shopify
-  python main.py scrape heartlands             # full run (all categories, all pages)
+  python main.py login birlea                  # just test the login (opens Chrome)
+  python main.py scrape birlea --limit 5       # Excel only, no Shopify
+  python main.py scrape birlea                 # full run (all categories, all pages)
   python main.py scrape beehive flair          # only these suppliers
   python main.py scrape all                    # every supplier, one after another
   python main.py scrape flair --fresh          # delete flair's tab and start over
@@ -40,7 +40,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logging.getLogger("urllib3").setLevel(logging.ERROR)  # hide harmless "Retrying..." noise after Ctrl+C
 log = logging.getLogger("main")
 
-VERSION = "2026-11-10 r20"  # printed at every start: tells you which version of the code is running
+VERSION = "2026-11-18 r21"  # printed at every start: tells you which version of the code is running
 
 
 def get_scraper_class(name):
@@ -48,8 +48,6 @@ def get_scraper_class(name):
         from suppliers.beehive import BeehiveScraper as C
     elif name == "birlea":
         from suppliers.birlea import BirleaScraper as C
-    elif name == "heartlands":
-        from suppliers.heartlands import HeartlandsScraper as C
     elif name == "julian_bowen":
         from suppliers.julian_bowen import JulianBowenScraper as C
     elif name == "flair":

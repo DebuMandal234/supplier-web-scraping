@@ -1,6 +1,6 @@
 # Supplier scraper → Excel → Shopify
 
-Logs in to each supplier site (Beehive, Birlea, Julian Bowen, Flair), saves every product to
+Logs in to each supplier site (Beehive, Birlea, Julian Bowen, Flair; GFW needs no login), saves every product to
 `Supplier Data.xlsx` (one tab per supplier, saved the moment each product is read) and lists the products in
 Shopify. Column **A** of every tab is the **Shopify product ID**.
 
@@ -32,7 +32,7 @@ python main.py fix-stock beehive         # set Shopify stock of drafts this prog
 python main.py schedule                   # create the Windows tasks: list Sunday 02:00, sync daily 06:00
 ```
 Other: `scrape <supplier>` (Excel only, no Shopify), `login <supplier>`, `probe <supplier> <url>`, `cleanup`.
-Every start prints `Supplier scraper version ...` – it should say **r29**.
+Every start prints `Supplier scraper version ...` – it should say **r30**.
 
 - **Keep the Excel file closed while it runs.** If it is open, data goes to `Supplier Data - backup.xlsx` and is
   copied into the main file on the next run.
@@ -95,6 +95,14 @@ weight, stock tracked with "stop selling when out of stock", and `supplier.*` me
   a size/colour that is sold out disappears from Flair's page and is set to 0 by the daily sync.
 - Birlea: exact stock number of every product (the shop's own product data, e.g. 201).
 - Julian Bowen: exact free stock of every finish/size (e.g. 35); "Back Order" = 0.
+- GFW: exact "Free Stock" of every product.
+
+**GFW** (`suppliers/gfw.py`): public Salsify customer catalogue (no login), read through its JSON API - about 590
+products. Per product: SKU (product code), EAN barcode, trade price (`GFW_PRICE=standard` = Standard Price, default;
+`GFW_PRICE=direct` = Direct Fulfilment Price), exact Free Stock, description + USP bullet points, every photo in full
+size (main, roomset, cut-out, detail; no instruction PDFs), colour / materials / assembled dimensions / weight /
+assembly / number of boxes as specs, product type = GFW's Product Type (e.g. "Ottoman Bed"), Product Group and colour
+as tags. Colours and sizes are separate products (own code) at GFW.
 
 **Julian Bowen** (`suppliers/julian_bowen.py` + `suppliers/jb_product.js`, GOb2b trade shop): the product list comes
 from every menu category with the shop's own paging (about 875 products, ~3 minutes). Each product is read with

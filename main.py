@@ -40,7 +40,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logging.getLogger("urllib3").setLevel(logging.ERROR)  # hide harmless "Retrying..." noise after Ctrl+C
 log = logging.getLogger("main")
 
-VERSION = "2026-11-18 r29"  # printed at every start: tells you which version of the code is running
+VERSION = "2026-11-18 r30"  # printed at every start: tells you which version of the code is running
 
 
 def get_scraper_class(name):
@@ -52,6 +52,8 @@ def get_scraper_class(name):
         from suppliers.julian_bowen import JulianBowenScraper as C
     elif name == "flair":
         from suppliers.flair import FlairScraper as C
+    elif name == "gfw":
+        from suppliers.gfw import GfwScraper as C
     else:
         raise SystemExit(f"Unknown supplier '{name}'. Choose from: {', '.join(config.SUPPLIERS)}")
     return C

@@ -60,7 +60,13 @@ def upload_rows(name, sheet, shop, rows):
             sheet.set(r, SHOPIFY_ID_LABEL, pid.rsplit("/", 1)[-1])
             sheet.set(r, STATUS_LABEL, f"{note} {_now()}")
             ok += 1
-            log.info("[%s]   %s: %s", name, note, p.title)
+            if note == "listed":
+                qtys = [stock_qty(v.get("in_stock"), p.availability, v.get("qty")) for v in (p.variants or [{}])]
+                stock = (f"stock {qtys[0]}" if len(qtys) == 1 else f"stock {sum(qtys)} over {len(qtys)} variants") \
+                    if shop.location_id() else "stock NOT set (no stock location)"
+                log.info("[%s]   listed (%s): %s", name, stock, p.title)
+            else:
+                log.info("[%s]   %s: %s", name, note, p.title)
         else:
             sheet.set(r, STATUS_LABEL, f"{note} ({_now()})")
             failed += 1

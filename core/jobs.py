@@ -84,19 +84,21 @@ def upload_waiting(name, sheet, shop):
 
 
 def run_list(name, scraper_cls, make_driver, shop, limit=None):
-    """STEP 1 for one supplier. Returns the scraper (for the crawl report) and the sheet."""
+    """STEP 1 for one supplier. Returns the scraper (for the crawl report) and the sheet.
+    limit = number of products NEW to the Shopify store: products that already exist in Shopify are linked
+    (ID written to Excel) but not counted, and the run goes on until `limit` new ones are found."""
     sheet = excel.SupplierSheet(name)
     log.info("[%s] STEP 1: new products -> Excel tab '%s' -> Shopify (%s, batches of %d)", name, name,
              config.SHOPIFY_PRODUCT_STATUS, config.SHOPIFY_BATCH_SIZE)
     upload_waiting(name, sheet, shop)
 
     driver = make_driver(config.HEADLESS)
-    scraper, pending, new = None, [], 0
+    scraper, pending, new, linked = None, [], 0, 0
     try:
         scraper = scraper_cls(driver)
         scraper.login()
         sheet.start()
-        for p in scraper.crawl(limit=limit, known_urls=sheet.known_urls):
+        for p in scraper.crawl(limit=None, known_urls=sheet.known_urls):
             why = sheet.is_known(p)
             if why:
                 log.info("[%s]   already in Excel (%s) - skipped: %s", name, why, p.title)
@@ -105,15 +107,28 @@ def run_list(name, scraper_cls, make_driver, shop, limit=None):
             if parent:
                 log.info("[%s]   skipped: all its variants are already in '%s' - %s", name, parent, p.title)
                 continue
+            existing = shop.find_existing_many([p])[0] if limit else None
             row = sheet.add(p)             # saved to Excel now
+            if existing:                   # already in the store: link it, don't count it towards --limit
+                sheet.set(row, SHOPIFY_ID_LABEL, existing.rsplit("/", 1)[-1])
+                sheet.set(row, STATUS_LABEL, f"already in Shopify - linked {_now()}", save=True)
+                linked += 1
+                log.info("[%s]   already in Shopify - linked (not counted): %s", name, p.title)
+                continue
             pending.append(row)
             new += 1
+            if limit:
+                log.info("[%s]   new product %d of %d: %s", name, new, limit, p.title)
             for dup in sheet.mark_covered_rows(row, p):
                 log.warning("[%s]   '%s' is a single-colour copy of '%s' - marked DUPLICATE in Excel; delete "
                             "its Shopify draft if it was listed", name, dup, p.title)
             if len(pending) >= config.SHOPIFY_BATCH_SIZE:
                 upload_rows(name, sheet, shop, pending)
                 pending = []
+            if limit and new >= limit:
+                log.info("[%s] %d new products found (%d already in Shopify were linked) - stopping", name,
+                         new, linked)
+                break
     except KeyboardInterrupt:
         log.warning("[%s] stopped by you", name)
     except ShopifyError as e:

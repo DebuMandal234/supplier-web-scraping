@@ -284,6 +284,9 @@ class ShopifyClient:
                 var["compareAtPrice"] = cmp_
             if v.get("sku"):
                 var["sku"] = str(v["sku"])[:255]
+            bc = v.get("barcode") or (p.ean if len(variants_in) == 1 else "")
+            if bc:
+                var["barcode"] = str(bc)[:255]
             w = v.get("weight") or p.weight
             try:
                 if w and float(w) > 0:

@@ -32,7 +32,7 @@ python main.py fix-stock beehive         # set Shopify stock of drafts this prog
 python main.py schedule                   # create the Windows tasks: list Sunday 02:00, sync daily 06:00
 ```
 Other: `scrape <supplier>` (Excel only, no Shopify), `login <supplier>`, `probe <supplier> <url>`, `cleanup`.
-Every start prints `Supplier scraper version ...` – it should say **r24**.
+Every start prints `Supplier scraper version ...` – it should say **r25**.
 
 - **Keep the Excel file closed while it runs.** If it is open, data goes to `Supplier Data - backup.xlsx` and is
   copied into the main file on the next run.
@@ -88,6 +88,13 @@ Compare-at price = the supplier's RRP when it is higher. Cost per item = the sup
 Each product is listed with: supplier collection (e.g. "Flair"), vendor, product type, tags, description +
 specs, images, options/variants with own SKU and price, cost per item (supplier price), compare-at (RRP),
 weight, stock tracked with "stop selling when out of stock", and `supplier.*` metafields (name, SKU, source URL).
+
+**Stock per supplier** (each size/colour gets its own number in Shopify):
+- Beehive: exact stock number of every product (Stock Feed API, or the product page).
+- Flair: exact number when a size/colour is running low ("Only 2 left"); otherwise in stock = `STOCK_IN_STOCK_QTY`;
+  a size/colour that is sold out disappears from Flair's page and is set to 0 by the daily sync.
+- Birlea, Julian Bowen: the number when the page shows "N in stock", otherwise in stock = `STOCK_IN_STOCK_QTY`,
+  out of stock = 0.
 
 **Safety:** if a supplier's site can't be read (8 products in a row fail, login broken), the daily sync stops
 for that supplier and changes nothing else. A product that disappears is set to 0 only after

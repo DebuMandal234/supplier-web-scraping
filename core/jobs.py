@@ -181,7 +181,7 @@ def fix_stock(name, sheet, shop):
         for sv, v in _match(sp["variants"]["nodes"], p.variants or []):
             if v is None:
                 continue
-            qty = stock_qty(v.get("in_stock"), p.availability)
+            qty = stock_qty(v.get("in_stock"), p.availability, v.get("qty"))
             level = sv["inventoryItem"].get("inventoryLevel")
             if level is None:
                 shop.activate_inventory(sv["inventoryItem"]["id"])
@@ -210,7 +210,7 @@ def _match(shop_variants, supplier_variants):
     pairs = []
     for i, sv in enumerate(shop_variants):
         v = by_sku.get(str(sv.get("sku") or "").lower())
-        if v is None and len(shop_variants) == len(supplier_variants):
+        if v is None and len(shop_variants) == len(supplier_variants) and not (by_sku and sv.get("sku")):
             v = supplier_variants[i]
         if v is None and len(supplier_variants) == 1:
             v = supplier_variants[0]
@@ -226,9 +226,14 @@ def sync_product(name, shop, pid, p):
         raise ShopifyError("product not found in Shopify (deleted there?)")
     updates, stock, n_price = [], [], 0
     for sv, v in _match(sp["variants"]["nodes"], p.variants or []):
-        if v is None:
-            continue
         item = sv["inventoryItem"]
+        if v is None:
+            # this size/colour is no longer offered on the supplier page (sold out) -> stock 0 in Shopify
+            level = item.get("inventoryLevel")
+            cur = (level.get("quantities") or [{}])[0].get("quantity") if level else None
+            if level is not None and cur != 0:
+                stock.append((item["id"], 0, cur))
+            continue
         upd = {"id": sv["id"]}
         cost = money(v.get("price") or p.price)
         if cost is not None and float(cost) > 0:
@@ -249,7 +254,7 @@ def sync_product(name, shop, pid, p):
             updates.append(upd)
             if "price" in upd or "compareAtPrice" in upd:
                 n_price += 1
-        qty = stock_qty(v.get("in_stock"), p.availability)
+        qty = stock_qty(v.get("in_stock"), p.availability, v.get("qty"))
         level = item.get("inventoryLevel")
         if level is None:
             shop.activate_inventory(item["id"])

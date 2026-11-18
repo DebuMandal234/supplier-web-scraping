@@ -211,7 +211,7 @@ class BeehiveScraper(BaseScraper):
             rows.append({"options": [str(o) for o in opts if o is not None], "sku": sku,
                          "price": V.money(v.get("price")), "compare_at_price": a.get("rrp") or "",
                          "barcode": "", "weight": f"{v['grams'] / 1000:.2f}" if v.get("grams") else "",
-                         "image": img or "", "in_stock": in_stock, "_qty": qty})
+                         "image": img or "", "in_stock": in_stock, "_qty": qty, "qty": qty})
         first = rows[0] if rows else {}
         specs = dict((api.get(str(first.get("sku", "")).lower(), {}) or {}).get("specs") or {})
         specs.update((info or {}).get("specs") or {})
@@ -242,6 +242,7 @@ class BeehiveScraper(BaseScraper):
         p.option_names, p.variants = V.finalize(p.option_names, p.variants, base)
         if len(p.variants) == 1:
             p.variants[0]["in_stock"] = first.get("in_stock")
+            p.variants[0]["qty"] = first.get("qty")
         return p
 
     # ------------------------------------------------------------------ STEP 1 + STEP 2 entry points

@@ -36,9 +36,15 @@ def money(v):
         return None
 
 
-def stock_qty(in_stock, availability):
+def stock_qty(in_stock, availability, qty=None):
     """Shopify quantity for one variant from what the supplier shows.
+    qty: exact number for this variant when the supplier gives one (wins over everything else);
     in_stock: True / False / None (unknown);  availability: text such as '12 in stock', 'InStock', 'Out of stock'."""
+    if qty not in (None, ""):
+        try:
+            return max(0, int(float(qty)) - config.STOCK_BUFFER)
+        except (TypeError, ValueError):
+            pass
     t = (availability or "").lower()
     m = re.search(r"(\d+)\s*(?:\+\s*)?(?:in stock|available|left|units?)", t)
     if in_stock is False:
@@ -268,7 +274,8 @@ class ShopifyClient:
             }
             if loc:
                 var["inventoryQuantities"] = [{"locationId": loc, "name": "available",
-                                               "quantity": stock_qty(v.get("in_stock"), p.availability)}]
+                                               "quantity": stock_qty(v.get("in_stock"), p.availability,
+                                                                          v.get("qty"))}]
             if cost is not None:
                 var["price"] = selling_price(cost, p)
                 var["inventoryItem"]["cost"] = cost

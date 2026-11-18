@@ -190,6 +190,12 @@ class FlairScraper(BaseScraper):
             cfg = self.driver.execute_script(CONFIG_JS)
         except WebDriverException:
             cfg = None
+        try:   # "Only N left in this size": {child product id: N} for sizes/colours running low
+            low = self.driver.execute_script(
+                "const e=document.querySelector('[x-data=\"initDnConfigurable\"]');"
+                "try{return JSON.parse((e&&e.dataset.dnLow)||'{}')}catch(x){return {}}") or {}
+        except WebDriverException:
+            low = {}
         if not cfg:
             return [], []
         def order(a):   # Size first, then Color, then anything else (like the Shopify listing)
@@ -235,6 +241,7 @@ class FlairScraper(BaseScraper):
                 "compare_at_price": old if (old and final and float(old) > float(final)) else "",
                 "barcode": "", "weight": "", "image": img.get("full") or img.get("img") or "",
                 "in_stock": in_stock,
+                "qty": low.get(str(pid)) if isinstance(low, dict) else None,   # exact only when running low
             })
         # same order as the dropdowns on the site
         order = {str(a["id"]): [str(o["id"]) for o in a.get("options", [])] for a in attrs}

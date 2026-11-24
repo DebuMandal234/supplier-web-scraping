@@ -40,7 +40,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logging.getLogger("urllib3").setLevel(logging.ERROR)  # hide harmless "Retrying..." noise after Ctrl+C
 log = logging.getLogger("main")
 
-VERSION = "2026-11-24 r32"  # printed at every start: tells you which version of the code is running
+VERSION = "2026-11-24 r33"  # printed at every start: tells you which version of the code is running
 
 
 def get_scraper_class(name):
@@ -202,6 +202,10 @@ def cmd_shopify_check(args):
     log.info("App permissions: %s", ", ".join(scopes))
     log.info("Stock location: %s", loc or "NOT AVAILABLE - products are listed without stock numbers "
              "(add the read_locations scope or set SHOPIFY_LOCATION_ID in .env)")
+    if config.SHOPIFY_PRODUCT_STATUS == "ACTIVE" and config.SHOPIFY_PUBLISH_CHANNELS:
+        pubs = shop.publications()
+        log.info("Sales channels for new products: %s -> %s", ", ".join(config.SHOPIFY_PUBLISH_CHANNELS),
+                 "OK" if pubs else "NOT AVAILABLE (products would get 0 channels)")
     if missing:
         log.error("MISSING permissions: %s - add them to the app in Shopify, then install/update it", ", ".join(missing))
     else:

@@ -163,6 +163,8 @@ class ShopifyClient:
                           currentAppInstallation { accessScopes { handle } } }""")
         scopes = sorted(s["handle"] for s in d["currentAppInstallation"]["accessScopes"])
         need = ["read_products", "write_products", "read_inventory", "write_inventory"]
+        if config.SHOPIFY_PRODUCT_STATUS == "ACTIVE" and config.SHOPIFY_PUBLISH_CHANNELS:
+            need += ["read_publications", "write_publications"]   # to show products in the Online Store
         have = set(scopes) | {s.replace("write_", "read_") for s in scopes}   # write_x includes read_x
         missing = [s for s in need if s not in have]
         return d["shop"], scopes, missing, self.location_id()
@@ -442,7 +444,8 @@ class ShopifyClient:
                 nodes = (d.get("publications") or {}).get("nodes") or []
                 wanted = [c.lower() for c in config.SHOPIFY_PUBLISH_CHANNELS]
                 self._pubs = [n["id"] for n in nodes
-                              if ((n.get("catalog") or {}).get("title") or "").strip().lower() in wanted]
+                              if "all" in wanted
+                              or ((n.get("catalog") or {}).get("title") or "").strip().lower() in wanted]
                 if not self._pubs:
                     log.warning("Sales channel %s not found in Shopify (found: %s) - products are ACTIVE but not "
                                 "published; set SHOPIFY_PUBLISH_CHANNELS in .env",
@@ -451,9 +454,9 @@ class ShopifyClient:
                 else:
                     log.info("Publishing new products to: %s", ", ".join(config.SHOPIFY_PUBLISH_CHANNELS))
             except ShopifyError as e:
-                log.warning("Cannot read the sales channels (%s) - give the Shopify app the read_publications and "
-                            "write_publications scopes; until then new products are ACTIVE but not published to "
-                            "the Online Store", str(e)[:120])
+                log.error("CANNOT PUBLISH TO THE ONLINE STORE: the Shopify app has no permission to read the sales "
+                          "channels (%s). Add the read_publications + write_publications scopes to the app, release "
+                          "it, empty 'access token.txt', then run: python main.py activate all", str(e)[:120])
         return self._pubs
 
     def publish(self, product_ids):

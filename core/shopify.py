@@ -440,27 +440,40 @@ class ShopifyClient:
             if config.SHOPIFY_PRODUCT_STATUS != "ACTIVE" or not config.SHOPIFY_PUBLISH_CHANNELS:
                 return self._pubs
             try:
-                q = "{ publications(first: 50) { nodes { id catalog { title } } } }"
+                q = "{ publications(first: 50) { nodes { id name app { handle title } } } }"
                 try:
                     d = self.gql(q)
                 except ShopifyError as e:
-                    # the saved token may be older than newly added app permissions: get a fresh token once
-                    if not (self.uses_client_credentials and re.search(r"access|denied|scope|permission", str(e), re.I)):
-                        raise
-                    log.info("No permission with the saved token - asking Shopify for a fresh token (new app "
-                             "permissions are only in new tokens)")
-                    self.token = self._client_credentials_token()
-                    d = self.gql(q)
+                    if re.search(r"access|denied|scope|permission", str(e), re.I):
+                        if not self.uses_client_credentials:
+                            raise
+                        # the saved token may be older than newly added app permissions: get a fresh token once
+                        log.info("No permission with the saved token - asking Shopify for a fresh token (new app "
+                                 "permissions are only in new tokens)")
+                        self.token = self._client_credentials_token()
+                        d = self.gql(q)
+                    else:      # old "name"/"app" fields removed by Shopify: read the channel apps of the catalogs
+                        d = self.gql("{ publications(first: 50, catalogType: APP) { nodes { id catalog { title "
+                                     "... on AppCatalog { apps(first: 1) { nodes { handle title } } } } } } }")
+                        for n in (d.get("publications") or {}).get("nodes") or []:
+                            app = (((n.get("catalog") or {}).get("apps") or {}).get("nodes") or [{}])[0]
+                            n["app"], n["name"] = app, app.get("title") or (n.get("catalog") or {}).get("title")
                 nodes = (d.get("publications") or {}).get("nodes") or []
+                names = {n["id"]: (n.get("name") or (n.get("app") or {}).get("title") or "").strip() for n in nodes}
+                handles = {n["id"]: ((n.get("app") or {}).get("handle") or "").strip().lower() for n in nodes}
                 wanted = [c.lower() for c in config.SHOPIFY_PUBLISH_CHANNELS]
-                self._pubs = [n["id"] for n in nodes
-                              if "all" in wanted
-                              or ((n.get("catalog") or {}).get("title") or "").strip().lower() in wanted]
+                wanted_handles = {w.replace(" ", "_") for w in wanted}          # "online store" -> online_store
+                self._pubs = [pid for pid, nm in names.items()
+                              if "all" in wanted or nm.lower() in wanted or handles.get(pid) in wanted_handles
+                              or pid in config.SHOPIFY_PUBLISH_CHANNELS
+                              or pid.rsplit("/", 1)[-1] in config.SHOPIFY_PUBLISH_CHANNELS]
+                log.info("Sales channels in the store: %s", "; ".join(f"{nm} ({pid.rsplit('/', 1)[-1]})"
+                                                                 for pid, nm in names.items()))
                 if not self._pubs:
                     log.warning("Sales channel %s not found in Shopify (found: %s) - products are ACTIVE but not "
                                 "published; set SHOPIFY_PUBLISH_CHANNELS in .env",
                                 ", ".join(config.SHOPIFY_PUBLISH_CHANNELS),
-                                ", ".join((n.get("catalog") or {}).get("title") or "?" for n in nodes) or "none")
+                                ", ".join(names.values()) or "none")
                 else:
                     log.info("Publishing new products to: %s", ", ".join(config.SHOPIFY_PUBLISH_CHANNELS))
             except ShopifyError as e:

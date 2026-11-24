@@ -440,7 +440,17 @@ class ShopifyClient:
             if config.SHOPIFY_PRODUCT_STATUS != "ACTIVE" or not config.SHOPIFY_PUBLISH_CHANNELS:
                 return self._pubs
             try:
-                d = self.gql("{ publications(first: 50) { nodes { id catalog { title } } } }")
+                q = "{ publications(first: 50) { nodes { id catalog { title } } } }"
+                try:
+                    d = self.gql(q)
+                except ShopifyError as e:
+                    # the saved token may be older than newly added app permissions: get a fresh token once
+                    if not (self.uses_client_credentials and re.search(r"access|denied|scope|permission", str(e), re.I)):
+                        raise
+                    log.info("No permission with the saved token - asking Shopify for a fresh token (new app "
+                             "permissions are only in new tokens)")
+                    self.token = self._client_credentials_token()
+                    d = self.gql(q)
                 nodes = (d.get("publications") or {}).get("nodes") or []
                 wanted = [c.lower() for c in config.SHOPIFY_PUBLISH_CHANNELS]
                 self._pubs = [n["id"] for n in nodes

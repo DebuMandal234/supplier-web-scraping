@@ -1,7 +1,7 @@
 """The two jobs of the project.
 
 STEP 1  list  (first run now, then weekly on Sunday)
-    Browse the supplier site, save every NEW product to its Excel tab, and list it in Shopify as DRAFT.
+    Browse the supplier site, save every NEW product to its Excel tab, and list it in Shopify as ACTIVE (SHOPIFY_PRODUCT_STATUS) and publish it to the Online Store.
     Products are uploaded in batches: as soon as SHOPIFY_BATCH_SIZE (20) new products are waiting, that batch
     is created in Shopify and each product's Shopify ID is written to column A of its row. The last, smaller
     batch is uploaded at the end. Rows still without an ID from earlier runs are uploaded first.
@@ -19,6 +19,7 @@ import config
 from core import excel
 from core.excel import SHOPIFY_ID_LABEL, STATUS_LABEL, SYNC_LABEL, URL_LABEL, product_from_row
 from core.pricing import selling_price
+from core.titles import proper_case
 from core.shopify import ShopifyError, money, stock_qty
 
 log = logging.getLogger("jobs")
@@ -105,6 +106,7 @@ def run_list(name, scraper_cls, make_driver, shop, limit=None):
         scraper.login()
         sheet.start()
         for p in scraper.crawl(limit=None, known_urls=sheet.known_urls):
+            p.title = proper_case(p.title)
             why = sheet.is_known(p)
             if why:
                 log.info("[%s]   already in Excel (%s) - skipped: %s", name, why, p.title)

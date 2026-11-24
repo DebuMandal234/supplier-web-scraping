@@ -33,7 +33,10 @@ if SHOPIFY_API_VERSION < _MIN_API:
     SHOPIFY_API_VERSION = "2026-10"
 SHOPIFY_CLIENT_ID = os.getenv("SHOPIFY_CLIENT_ID", "").strip()
 SHOPIFY_CLIENT_SECRET = os.getenv("SHOPIFY_CLIENT_SECRET", "").strip()
-SHOPIFY_PRODUCT_STATUS = os.getenv("SHOPIFY_PRODUCT_STATUS", "DRAFT").strip().upper()
+SHOPIFY_PRODUCT_STATUS = os.getenv("SHOPIFY_PRODUCT_STATUS", "ACTIVE").strip().upper()   # ACTIVE (live) or DRAFT
+# sales channels an ACTIVE product is published to (comma separated names as in Shopify); empty = none
+SHOPIFY_PUBLISH_CHANNELS = [c.strip() for c in os.getenv("SHOPIFY_PUBLISH_CHANNELS", "Online Store").split(",")
+                            if c.strip()]
 SHOPIFY_LOCATION_ID = os.getenv("SHOPIFY_LOCATION_ID", "").strip()   # empty = the store's first location
 SHOPIFY_BATCH_SIZE = max(1, int(os.getenv("SHOPIFY_BATCH_SIZE", "20")))  # upload when this many are waiting
 PRICE_MARKUP = float(os.getenv("PRICE_MARKUP", "1.0"))

@@ -8,7 +8,7 @@ Shopify. Column **A** of every tab is the **Shopify product ID**.
 
 | Step | Command | When | What it does |
 |---|---|---|---|
-| 1 – list | `python main.py list all` | now, then **every Sunday** | browses the supplier sites, saves **new** products to Excel and creates them in Shopify as **DRAFT**, in batches of 20 – **one API call per batch** (plus one quick duplicate check). The last, smaller batch is uploaded at the end. The Shopify ID goes to column A. |
+| 1 – list | `python main.py list all` | now, then **every Sunday** | browses the supplier sites, saves **new** products to Excel and creates them in Shopify as **ACTIVE** and publishes them to the **Online Store**, in batches of 20 – **one API call per batch** (plus one quick duplicate check). The last, smaller batch is uploaded at the end. The Shopify ID goes to column A. |
 | 2 – sync | `python main.py sync all` | **every day** | no browsing: opens each listed product **directly by its link**, reads price + stock and sends only the changes to Shopify. |
 
 **No duplicates:** a product is skipped when its link or its SKU is already in the supplier's tab, and it is
@@ -32,7 +32,7 @@ python main.py fix-stock beehive         # set Shopify stock of drafts this prog
 python main.py schedule                   # create the Windows tasks: list Sunday 02:00, sync daily 06:00
 ```
 Other: `scrape <supplier>` (Excel only, no Shopify), `login <supplier>`, `probe <supplier> <url>`, `cleanup`.
-Every start prints `Supplier scraper version ...` – it should say **r30**.
+Every start prints `Supplier scraper version ...` – it should say **r31**.
 
 - **Keep the Excel file closed while it runs.** If it is open, data goes to `Supplier Data - backup.xlsx` and is
   copied into the main file on the next run.
@@ -42,14 +42,15 @@ Every start prints `Supplier scraper version ...` – it should say **r30**.
 ## Shopify set-up (once)
 
 1. Shopify admin → Settings → Apps → Develop apps (or the Dev Dashboard) → create an app for your store.
-2. Admin API scopes: `write_products`, `write_inventory`, and `read_locations` (without it products are listed
-   without stock numbers – or put `SHOPIFY_LOCATION_ID=<number>` in `.env`).
+2. Admin API scopes: `write_products`, `write_inventory`, `read_locations` (without it products are listed
+   without stock numbers – or put `SHOPIFY_LOCATION_ID=<number>` in `.env`), and `read_publications` +
+   `write_publications` (without them ACTIVE products are created but not shown in the Online Store).
 3. Put the credentials in `.env` (never in the code, never on GitHub):
    ```
    SHOPIFY_STORE=yourstore.myshopify.com
    SHOPIFY_CLIENT_ID=...
    SHOPIFY_CLIENT_SECRET=shpss_...
-   SHOPIFY_PRODUCT_STATUS=DRAFT
+   SHOPIFY_PRODUCT_STATUS=ACTIVE
    ```
    Every API call uses the token in **`access token.txt`**. When Shopify refuses it (tokens expire after ~24 h),
    a new one is requested with the client ID + secret and written into `access token.txt`.
@@ -60,7 +61,7 @@ Every start prints `Supplier scraper version ...` – it should say **r30**.
 
 | Setting | Default | Allows |
 |---|---|---|
-| (always) | – | creating new products as `SHOPIFY_PRODUCT_STATUS` (DRAFT) |
+| (always) | – | creating new products as `SHOPIFY_PRODUCT_STATUS` (ACTIVE, published to `SHOPIFY_PUBLISH_CHANNELS` = Online Store) |
 | `SHOPIFY_ALLOW_SYNC` | false | STEP 2: price/stock updates of the products it listed |
 | `SHOPIFY_CREATE_COLLECTIONS` | false | creating one collection per supplier and adding its products |
 
@@ -68,16 +69,23 @@ Product type = what the product is (the most specific category of the supplier's
 
 ## Prices and stock (settings in `.env`)
 
-**Shopify price = supplier price + 20% + £35 fee (£85 for sofas / big items), rounded UP to ...9.99**
-(e.g. 46.56 → 49.99, 77.32 → 79.99). Each size/colour gets its own price from its own supplier price.
+**Shopify price = (X + 20% VAT + delivery charge £40–80) + 35% profit margin, rounded UP to ...9.99** (X = supplier price)
+e.g. X = £100, small item: 100 + 20 = 120 → + 40 delivery = 160 → + 35% = 216 → **£219.99**.
+Delivery charge by size: sofas, beds, wardrobes, mattresses, dining sets … = £80; otherwise by weight
+(≤15 kg £40, ≤25 kg £50, ≤35 kg £60, ≤50 kg £70, heavier £80); no weight known: medium furniture (sideboard, chest,
+desk, …) £60, small items £40. Each size/colour gets its own price from its own supplier price.
 Compare-at price = the supplier's RRP when it is higher. Cost per item = the supplier price.
+Titles are written in Proper Case ("Anya 150cm Integrated Storage Ottoman Bed White"). The first photo of the
+product (the supplier's main photo) is the product's main photo in Shopify.
 
 | Setting | Meaning | Default |
 |---|---|---|
-| `PRICE_MARGIN_PERCENT` | margin on top of the supplier price | 20 |
-| `PRICE_FEE_STANDARD` / `PRICE_FEE_BIG` | fixed amount added; big = sofas / big items | 35 / 85 |
-| `BIG_ITEM_KEYWORDS` | words in title/category that make a product "big" | sofa, settee, chaise, corner sofa, … |
-| `BIG_ITEM_MIN_WEIGHT_KG` | also "big" from this weight (0 = off) | 0 |
+| `PRICE_VAT_PERCENT` | VAT added to the supplier price | 20 |
+| `PROFIT_MARGIN_PERCENT` | profit margin | 35 |
+| `PRICE_MARGIN_ON` | `total` = margin on (X + VAT + delivery); `supplier_price` = margin on X only | total |
+| `DELIVERY_MIN` / `DELIVERY_MEDIUM` / `DELIVERY_MAX` | delivery charge small / medium (no weight) / big | 40 / 60 / 80 |
+| `DELIVERY_WEIGHT_STEPS` | delivery charge by weight `kg:charge,…` | 15:40,25:50,35:60,50:70 |
+| `BIG_DELIVERY_KEYWORDS` / `NOT_BIG_KEYWORDS` | words that always mean "big" / never "big" | sofa, bed, wardrobe, … / bedside, … |
 | `PRICE_ROUND_TO_9_99` | round up to ...9.99 | true |
 | `STOCK_IN_STOCK_QTY` | quantity used when the supplier only says "in stock" | 5 |
 | `STOCK_BUFFER` | subtracted when the supplier shows a real number ("12 in stock" → 12 − buffer) | 0 |

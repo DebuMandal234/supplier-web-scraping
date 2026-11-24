@@ -2,14 +2,16 @@
 
 Uses the GraphQL Admin API (the REST product endpoints are legacy/deprecated).
 Credentials come from .env: SHOPIFY_STORE + SHOPIFY_CLIENT_ID + SHOPIFY_CLIENT_SECRET.
-Needed app scopes: write_products, write_inventory (+ read_locations to set stock quantities).
+Needed app scopes: write_products, write_inventory (+ read_locations to set stock quantities,
++ read_publications / write_publications to show ACTIVE products in the Online Store).
 
 Access token: every API call uses the token saved in "access token.txt". With SHOPIFY_CLIENT_ID +
 SHOPIFY_CLIENT_SECRET a new token is requested only when Shopify refuses that token (expired after ~24 h);
 the new token is written to "access token.txt" and used from then on.
 
 What this program changes in Shopify:
-  * STEP 1: creates products (status DRAFT) - nothing else.
+  * STEP 1: creates products (status from SHOPIFY_PRODUCT_STATUS: ACTIVE or DRAFT) and, when ACTIVE, publishes them
+    to the sales channels in SHOPIFY_PUBLISH_CHANNELS ("Online Store") - nothing else.
   * STEP 2 (sync): prices/stock of products it created - only when SHOPIFY_ALLOW_SYNC=true in .env.
   * supplier collections - only when SHOPIFY_CREATE_COLLECTIONS=true in .env.
 """
@@ -24,6 +26,7 @@ import requests
 import config
 from core.payload import body_html
 from core.pricing import selling_price
+from core.titles import proper_case
 
 log = logging.getLogger("shopify")
 
@@ -252,6 +255,7 @@ class ShopifyClient:
 
     def product_input(self, p):
         supplier_name = config.SUPPLIER_NAMES.get(p.supplier, p.supplier)
+        p.title = proper_case(p.title)
         loc = self.location_id()   # None = no permission to read locations: list without stock numbers
         names = [n for n in (p.option_names or [])][:3]
         variants_in = p.variants or [{"options": [], "sku": p.sku, "price": p.price, "compare_at_price": p.rrp,
@@ -363,7 +367,7 @@ class ShopifyClient:
         return out
 
     def create_products(self, products):
-        """Create up to SHOPIFY_BATCH_SIZE products as DRAFT in ONE API call (one aliased productSet per product).
+        """Create up to SHOPIFY_BATCH_SIZE products (ACTIVE or DRAFT) in ONE API call (one aliased productSet per product).
         Products already in Shopify are linked, not created again.
         Returns [(product_id or None, note or error text)] in the same order."""
         results = [None] * len(products)
@@ -404,9 +408,56 @@ class ShopifyClient:
                 results[i] = (None, f"ERROR: {msg or 'no product returned'}"[:500])
             else:
                 results[i] = (res["product"]["id"], "listed")
+        self.publish([results[i][0] for i, _ in todo if results[i] and results[i][0]])
+
+    # ---- ACTIVE products must also be published to a sales channel to be seen in the store
+    def publications(self):
+        if getattr(self, "_pubs", None) is None:
+            self._pubs = []
+            if config.SHOPIFY_PRODUCT_STATUS != "ACTIVE" or not config.SHOPIFY_PUBLISH_CHANNELS:
+                return self._pubs
+            try:
+                d = self.gql("{ publications(first: 50) { nodes { id catalog { title } } } }")
+                nodes = (d.get("publications") or {}).get("nodes") or []
+                wanted = [c.lower() for c in config.SHOPIFY_PUBLISH_CHANNELS]
+                self._pubs = [n["id"] for n in nodes
+                              if ((n.get("catalog") or {}).get("title") or "").strip().lower() in wanted]
+                if not self._pubs:
+                    log.warning("Sales channel %s not found in Shopify (found: %s) - products are ACTIVE but not "
+                                "published; set SHOPIFY_PUBLISH_CHANNELS in .env",
+                                ", ".join(config.SHOPIFY_PUBLISH_CHANNELS),
+                                ", ".join((n.get("catalog") or {}).get("title") or "?" for n in nodes) or "none")
+                else:
+                    log.info("Publishing new products to: %s", ", ".join(config.SHOPIFY_PUBLISH_CHANNELS))
+            except ShopifyError as e:
+                log.warning("Cannot read the sales channels (%s) - give the Shopify app the read_publications and "
+                            "write_publications scopes; until then new products are ACTIVE but not published to "
+                            "the Online Store", str(e)[:120])
+        return self._pubs
+
+    def publish(self, product_ids):
+        """Publish new products to the sales channels (ONE API call for the whole batch)."""
+        pubs = self.publications()
+        if not product_ids or not pubs:
+            return
+        body = " ".join(f"p{n}: publishablePublish(id: $id{n}, input: $pub) {{ userErrors {{ field message }} }}"
+                        for n in range(len(product_ids)))
+        defs = ", ".join([f"$id{n}: ID!" for n in range(len(product_ids))] + ["$pub: [PublicationInput!]!"])
+        variables = {f"id{n}": pid for n, pid in enumerate(product_ids)}
+        variables["pub"] = [{"publicationId": p} for p in pubs]
+        try:
+            d = self.gql(f"mutation({defs}) {{ {body} }}", variables)
+            errs = [e["message"] for n in range(len(product_ids)) for e in (d.get(f"p{n}") or {}).get("userErrors") or []]
+            if errs:
+                log.warning("Publishing: %s", "; ".join(sorted(set(errs)))[:300])
+            else:
+                log.info("Published %d products to %s", len(product_ids), ", ".join(config.SHOPIFY_PUBLISH_CHANNELS))
+        except ShopifyError as e:
+            log.warning("Could not publish to the Online Store (%s) - give the Shopify app the write_publications "
+                        "scope", str(e)[:120])
 
     def create_product(self, p):
-        """Create one product (DRAFT). Returns (product_id, note). Raises ShopifyError on failure."""
+        """Create one product (SHOPIFY_PRODUCT_STATUS). Returns (product_id, note). Raises ShopifyError on failure."""
         existing = self.find_existing(p)
         if existing:
             return existing, "already in Shopify - linked"
@@ -419,6 +470,7 @@ class ShopifyClient:
         if res["userErrors"]:
             raise ShopifyError("; ".join(f"{'.'.join(map(str, e.get('field') or []))}: {e['message']}"
                                          for e in res["userErrors"])[:500])
+        self.publish([res["product"]["id"]])
         return res["product"]["id"], "listed"
 
     # ------------------------------------------------------------------ step 2: stock + price

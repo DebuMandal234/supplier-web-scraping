@@ -1,7 +1,7 @@
 """
 Supplier sites -> Excel (one tab per supplier) -> Shopify.
 
-STEP 1 (now, then weekly on Sunday): new products -> Excel + Shopify (DRAFT, batches of 20)
+STEP 1 (now, then weekly on Sunday): new products -> Excel + Shopify (ACTIVE + Online Store, batches of 20)
   python main.py list flair                    # one supplier
   python main.py list all                      # every supplier, one after another
   python main.py list flair --limit 5          # small test
@@ -40,7 +40,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logging.getLogger("urllib3").setLevel(logging.ERROR)  # hide harmless "Retrying..." noise after Ctrl+C
 log = logging.getLogger("main")
 
-VERSION = "2026-11-18 r30"  # printed at every start: tells you which version of the code is running
+VERSION = "2026-11-24 r31"  # printed at every start: tells you which version of the code is running
 
 
 def get_scraper_class(name):
@@ -368,7 +368,7 @@ def main():
     s.add_argument("--fresh", action="store_true", help="delete this supplier's Excel tab and start over")
     s.set_defaults(fn=cmd_scrape)
 
-    s = sub.add_parser("list", help="STEP 1: new products -> Excel -> Shopify (DRAFT, batches of 20)")
+    s = sub.add_parser("list", help="STEP 1: new products -> Excel -> Shopify (ACTIVE + Online Store, batches of 20)")
     s.add_argument("supplier", nargs="+", choices=choices, help="one or more suppliers, or: all")
     s.add_argument("--limit", type=int, default=None, help="stop after N new products (for testing)")
     s.set_defaults(fn=cmd_list)

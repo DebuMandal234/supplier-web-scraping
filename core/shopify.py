@@ -410,6 +410,27 @@ class ShopifyClient:
                 results[i] = (res["product"]["id"], "listed")
         self.publish([results[i][0] for i, _ in todo if results[i] and results[i][0]])
 
+    def activate(self, product_ids):
+        """Set products to ACTIVE (one API call per 20) and publish them to the sales channels.
+        Returns the number activated."""
+        done = 0
+        for k in range(0, len(product_ids), 20):
+            chunk = product_ids[k:k + 20]
+            body = " ".join(f"p{n}: productUpdate(product: {{id: $id{n}, status: ACTIVE}}) "
+                            f"{{ product {{ id status }} userErrors {{ field message }} }}" for n in range(len(chunk)))
+            defs = ", ".join(f"$id{n}: ID!" for n in range(len(chunk)))
+            d = self.gql(f"mutation({defs}) {{ {body} }}", {f"id{n}": pid for n, pid in enumerate(chunk)})
+            ok = []
+            for n, pid in enumerate(chunk):
+                res = d.get(f"p{n}") or {}
+                if res.get("userErrors"):
+                    log.warning("Could not activate %s: %s", pid, "; ".join(e["message"] for e in res["userErrors"]))
+                else:
+                    ok.append(pid)
+            done += len(ok)
+            self.publish(ok)
+        return done
+
     # ---- ACTIVE products must also be published to a sales channel to be seen in the store
     def publications(self):
         if getattr(self, "_pubs", None) is None:

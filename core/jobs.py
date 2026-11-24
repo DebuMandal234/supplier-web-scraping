@@ -367,3 +367,20 @@ def run_sync(name, scraper_cls, make_driver, shop, limit=None):
         log.info("[%s] STEP 2 DONE: %d checked, %d changed in Shopify, %d missing on supplier site, %d errors",
                  name, done, changed, missing, errors)
     return scraper, sheet
+
+
+def activate(name, sheet, shop):
+    """Set the products THIS program listed (status "listed ...", Shopify ID in column A) to ACTIVE and publish
+    them to the Online Store. Products that were already in Shopify ("linked") are left alone."""
+    ids = []
+    for r, d in sheet.rows():
+        pid = str(d.get(SHOPIFY_ID_LABEL) or "").strip()
+        if pid and str(d.get(STATUS_LABEL) or "").startswith("listed"):
+            ids.append(pid if pid.startswith("gid://") else f"gid://shopify/Product/{pid}")
+    ids = list(dict.fromkeys(ids))
+    if not ids:
+        log.info("[%s] activate: no products listed by this program in the Excel tab", name)
+        return
+    log.info("[%s] activate: setting %d listed products to ACTIVE", name, len(ids))
+    n = shop.activate(ids)
+    log.info("[%s] activate done: %d products ACTIVE", name, n)

@@ -33,7 +33,9 @@ if SHOPIFY_API_VERSION < _MIN_API:
     SHOPIFY_API_VERSION = "2026-10"
 SHOPIFY_CLIENT_ID = os.getenv("SHOPIFY_CLIENT_ID", "").strip()
 SHOPIFY_CLIENT_SECRET = os.getenv("SHOPIFY_CLIENT_SECRET", "").strip()
-SHOPIFY_PRODUCT_STATUS = os.getenv("SHOPIFY_PRODUCT_STATUS", "ACTIVE").strip().upper()   # ACTIVE (live) or DRAFT
+# Status of new products. New setting name SHOPIFY_LISTING_STATUS (the old SHOPIFY_PRODUCT_STATUS=DRAFT line in
+# .env is ignored on purpose since 2026-11-24: the owner asked for ACTIVE products).
+SHOPIFY_PRODUCT_STATUS = os.getenv("SHOPIFY_LISTING_STATUS", "ACTIVE").strip().upper()   # ACTIVE (live) or DRAFT
 # sales channels an ACTIVE product is published to (comma separated names as in Shopify); empty = none
 SHOPIFY_PUBLISH_CHANNELS = [c.strip() for c in os.getenv("SHOPIFY_PUBLISH_CHANNELS", "Online Store").split(",")
                             if c.strip()]

@@ -40,7 +40,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logging.getLogger("urllib3").setLevel(logging.ERROR)  # hide harmless "Retrying..." noise after Ctrl+C
 log = logging.getLogger("main")
 
-VERSION = "2026-11-24 r31"  # printed at every start: tells you which version of the code is running
+VERSION = "2026-11-24 r32"  # printed at every start: tells you which version of the code is running
 
 
 def get_scraper_class(name):
@@ -297,6 +297,28 @@ def cmd_fix_stock(args):
             sheet.close()
 
 
+def cmd_activate(args):
+    """Set products this program listed (drafts) to ACTIVE and publish them to the Online Store."""
+    from core import jobs
+    from core.shopify import ShopifyError
+    log.info("Supplier scraper version %s - activate listed products", VERSION)
+    shop = _shop()
+    if not shop:
+        return
+    for name in suppliers_from(args.supplier):
+        try:
+            sheet = excel.SupplierSheet(name)
+        except PermissionError as e:
+            log.error("%s", e)
+            return
+        try:
+            jobs.activate(name, sheet, shop)
+        except (ShopifyError, KeyboardInterrupt) as e:
+            log.error("[%s] activate stopped: %s", name, e)
+        finally:
+            sheet.close()
+
+
 def cmd_schedule(args):
     """Create (or replace) the two Windows scheduled tasks."""
     import subprocess
@@ -385,6 +407,10 @@ def main():
     s = sub.add_parser("fix-stock", help="set Shopify stock of products this program listed (from Excel)")
     s.add_argument("supplier", nargs="+", choices=choices, help="one or more suppliers, or: all")
     s.set_defaults(fn=cmd_fix_stock)
+
+    s = sub.add_parser("activate", help="set products this program listed (drafts) to ACTIVE + Online Store")
+    s.add_argument("supplier", nargs="+", choices=choices, help="one or more suppliers, or: all")
+    s.set_defaults(fn=cmd_activate)
 
     s = sub.add_parser("shopify-check", help="test the Shopify connection and permissions")
     s.set_defaults(fn=cmd_shopify_check)

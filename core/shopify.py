@@ -72,6 +72,15 @@ def product_type(p, supplier_name=""):
     return t[:255]
 
 
+def listing_status(p):
+    """ACTIVE for normal products; DRAFT for products that need manual editing first (tags in SHOPIFY_DRAFT_TAGS,
+    e.g. Beehive's made-to-order "Choose your Colour, Choose your Fabric" sofas, chairs, sofabeds, footstools)."""
+    if any(str(t).strip().lower() in config.DRAFT_TAGS for t in (p.tags or [])):
+        return "DRAFT"
+    st = config.SHOPIFY_PRODUCT_STATUS
+    return st if st in ("DRAFT", "ACTIVE", "ARCHIVED") else "DRAFT"
+
+
 class ShopifyError(RuntimeError):
     pass
 
@@ -321,8 +330,7 @@ class ShopifyClient:
             "vendor": (p.brand or supplier_name)[:255],
             "productType": product_type(p, supplier_name),
             "tags": tags[:250],
-            "status": config.SHOPIFY_PRODUCT_STATUS if config.SHOPIFY_PRODUCT_STATUS in
-            ("DRAFT", "ACTIVE", "ARCHIVED") else "DRAFT",
+            "status": listing_status(p),
             "productOptions": [{"name": n, "values": [{"name": o} for o in vals]}
                                for n, vals in zip(names, option_values)],
             "variants": variants,

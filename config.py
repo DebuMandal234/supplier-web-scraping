@@ -36,6 +36,9 @@ SHOPIFY_CLIENT_SECRET = os.getenv("SHOPIFY_CLIENT_SECRET", "").strip()
 # Status of new products. New setting name SHOPIFY_LISTING_STATUS (the old SHOPIFY_PRODUCT_STATUS=DRAFT line in
 # .env is ignored on purpose since 2026-11-24: the owner asked for ACTIVE products).
 SHOPIFY_PRODUCT_STATUS = os.getenv("SHOPIFY_LISTING_STATUS", "ACTIVE").strip().upper()   # ACTIVE (live) or DRAFT
+# products with one of these tags are always listed as DRAFT (they need manual editing before going live).
+# Beehive's "Choose your Colour, Choose your Fabric" range (Special Order / made to order) is tagged "Made to order".
+DRAFT_TAGS = [t.strip().lower() for t in os.getenv("SHOPIFY_DRAFT_TAGS", "Made to order").split(",") if t.strip()]
 # sales channels an ACTIVE product is published to (comma separated names as in Shopify); empty = none
 SHOPIFY_PUBLISH_CHANNELS = [c.strip() for c in os.getenv("SHOPIFY_PUBLISH_CHANNELS", "Online Store").split(",")
                             if c.strip()]

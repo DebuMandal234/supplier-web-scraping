@@ -20,7 +20,7 @@ from core import excel
 from core.excel import SHOPIFY_ID_LABEL, STATUS_LABEL, SYNC_LABEL, URL_LABEL, product_from_row
 from core.pricing import selling_price
 from core.titles import proper_case
-from core.shopify import ShopifyError, money, stock_qty
+from core.shopify import ShopifyError, listing_status, money, stock_qty
 
 log = logging.getLogger("jobs")
 
@@ -65,7 +65,8 @@ def upload_rows(name, sheet, shop, rows):
                 qtys = [stock_qty(v.get("in_stock"), p.availability, v.get("qty")) for v in (p.variants or [{}])]
                 stock = (f"stock {qtys[0]}" if len(qtys) == 1 else f"stock {sum(qtys)} over {len(qtys)} variants") \
                     if shop.location_id() else "stock NOT set (no stock location)"
-                log.info("[%s]   listed (%s): %s", name, stock, p.title)
+                draft = " as DRAFT (made to order - edit it, then set it Active)" if listing_status(p) == "DRAFT" else ""
+                log.info("[%s]   listed%s (%s): %s", name, draft, stock, p.title)
             else:
                 log.info("[%s]   %s: %s", name, note, p.title)
         else:
@@ -371,11 +372,14 @@ def run_sync(name, scraper_cls, make_driver, shop, limit=None):
 
 def activate(name, sheet, shop):
     """Set the products THIS program listed (status "listed ...", Shopify ID in column A) to ACTIVE and publish
-    them to the Online Store. Products that were already in Shopify ("linked") are left alone."""
+    them to the Online Store. Products that were already in Shopify ("linked") and made-to-order products
+    (SHOPIFY_DRAFT_TAGS) are left alone."""
     ids = []
     for r, d in sheet.rows():
         pid = str(d.get(SHOPIFY_ID_LABEL) or "").strip()
         if pid and str(d.get(STATUS_LABEL) or "").startswith("listed"):
+            if listing_status(product_from_row(d)) == "DRAFT":
+                continue          # made-to-order products stay DRAFT until edited by hand
             ids.append(pid if pid.startswith("gid://") else f"gid://shopify/Product/{pid}")
     ids = list(dict.fromkeys(ids))
     if not ids:

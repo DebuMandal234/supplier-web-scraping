@@ -441,6 +441,37 @@ class ShopifyClient:
             self.publish(ok)
         return done
 
+    def find_products(self, query):
+        """All products matching a Shopify search query, e.g. status:draft AND vendor:'Julian Bowen'."""
+        out, after = [], None
+        while True:
+            d = self.gql("query($q: String!, $after: String) { products(first: 250, query: $q, after: $after) { "
+                         "nodes { id title status vendor createdAt } pageInfo { hasNextPage endCursor } } }",
+                         {"q": query, "after": after})
+            page = d.get("products") or {}
+            out += page.get("nodes") or []
+            if not (page.get("pageInfo") or {}).get("hasNextPage"):
+                return out
+            after = page["pageInfo"]["endCursor"]
+
+    def delete_products(self, product_ids):
+        """PERMANENTLY delete products (20 per API call). Returns the list of deleted IDs."""
+        deleted = []
+        for k in range(0, len(product_ids), 20):
+            chunk = product_ids[k:k + 20]
+            body = " ".join(f"p{n}: productDelete(input: {{id: $id{n}}}) {{ deletedProductId userErrors {{ message }} }}"
+                            for n in range(len(chunk)))
+            defs = ", ".join(f"$id{n}: ID!" for n in range(len(chunk)))
+            d = self.gql(f"mutation({defs}) {{ {body} }}", {f"id{n}": pid for n, pid in enumerate(chunk)})
+            for n, pid in enumerate(chunk):
+                res = d.get(f"p{n}") or {}
+                if res.get("deletedProductId"):
+                    deleted.append(pid)
+                else:
+                    log.warning("Could not delete %s: %s", pid,
+                                "; ".join(e["message"] for e in res.get("userErrors") or []) or "unknown error")
+        return deleted
+
     # ---- ACTIVE products must also be published to a sales channel to be seen in the store
     def publications(self):
         if getattr(self, "_pubs", None) is None:

@@ -40,7 +40,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logging.getLogger("urllib3").setLevel(logging.ERROR)  # hide harmless "Retrying..." noise after Ctrl+C
 log = logging.getLogger("main")
 
-VERSION = "2026-11-26 r36"  # printed at every start: tells you which version of the code is running
+VERSION = "2026-11-27 r37"  # printed at every start: tells you which version of the code is running
 
 
 def get_scraper_class(name):
@@ -323,6 +323,52 @@ def cmd_activate(args):
             sheet.close()
 
 
+def cmd_delete_drafts(args):
+    """Delete DRAFT products of one vendor. Without --confirm it only LISTS what would be deleted."""
+    from core.shopify import ShopifyError
+    log.info("Supplier scraper version %s - delete draft products of vendor '%s'%s", VERSION, args.vendor,
+             "" if args.confirm else " (preview only, nothing is deleted)")
+    shop = _shop()
+    if not shop:
+        return
+    vendor = args.vendor.replace("'", "\\'")
+    try:
+        found = [p for p in shop.find_products(f"status:draft AND vendor:'{vendor}'")
+                 if p.get("status") == "DRAFT" and (p.get("vendor") or "").strip().lower() == args.vendor.strip().lower()]
+    except ShopifyError as e:
+        log.error("Could not search Shopify: %s", e)
+        return
+    for p in found:
+        log.info("  %s  %s  (created %s)", p["id"].rsplit("/", 1)[-1], p["title"], (p.get("createdAt") or "")[:10])
+    log.info("%d DRAFT products with vendor '%s'", len(found), args.vendor)
+    if not found:
+        return
+    if not args.confirm:
+        log.info("Nothing deleted. To delete these %d products PERMANENTLY (cannot be undone), run:", len(found))
+        log.info('  python main.py delete-drafts "%s" --confirm', args.vendor)
+        return
+    deleted = shop.delete_products([p["id"] for p in found])
+    log.info("DELETED %d of %d draft products from Shopify", len(deleted), len(found))
+    # remove their rows from the supplier's Excel tab, so they can be listed again from scratch later
+    gone = {d.rsplit("/", 1)[-1] for d in deleted}
+    supplier = next((k for k, v in config.SUPPLIER_NAMES.items() if v.lower() == args.vendor.strip().lower()), None)
+    if supplier and gone:
+        try:
+            sheet = excel.SupplierSheet(supplier)
+        except PermissionError as e:
+            log.error("%s  (Shopify products are deleted; their Excel rows were not removed)", e)
+            return
+        try:
+            rows = [r for r, d in sheet.rows()
+                    if str(d.get(excel.SHOPIFY_ID_LABEL) or "").strip().rsplit("/", 1)[-1] in gone]
+            if rows:
+                sheet.remove_rows(rows)
+                log.info("[%s] removed %d rows from the Excel tab (a later 'list' run lists them again fresh)",
+                         supplier, len(rows))
+        finally:
+            sheet.close()
+
+
 def cmd_schedule(args):
     """Create (or replace) the two Windows scheduled tasks."""
     import subprocess
@@ -411,6 +457,11 @@ def main():
     s = sub.add_parser("fix-stock", help="set Shopify stock of products this program listed (from Excel)")
     s.add_argument("supplier", nargs="+", choices=choices, help="one or more suppliers, or: all")
     s.set_defaults(fn=cmd_fix_stock)
+
+    s = sub.add_parser("delete-drafts", help="delete DRAFT products of one vendor (preview first; --confirm deletes)")
+    s.add_argument("vendor", help='vendor name as in Shopify, e.g. "Julian Bowen"')
+    s.add_argument("--confirm", action="store_true", help="really delete (permanent)")
+    s.set_defaults(fn=cmd_delete_drafts)
 
     s = sub.add_parser("activate", help="set products this program listed (drafts) to ACTIVE + Online Store")
     s.add_argument("supplier", nargs="+", choices=choices, help="one or more suppliers, or: all")

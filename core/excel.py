@@ -337,6 +337,23 @@ class SupplierSheet:
         if save and self.pending >= config.SAVE_EVERY:
             self.flush()
 
+    def remove_rows(self, rows):
+        """Delete these product rows from the tab (e.g. products deleted in Shopify), so a later
+        'list' run can scrape and list them again from scratch."""
+        rows = sorted(set(rows), reverse=True)
+        for r in rows:
+            self.ws.delete_rows(r)
+        self.next_row = max(2, self.next_row - len(rows))
+        self.known_urls, self.known_skus = set(), set()
+        for _, d in self.rows():
+            if d.get(URL_LABEL):
+                self.known_urls.add(d[URL_LABEL])
+            if str(d.get("SKU") or "").strip():
+                self.known_skus.add(str(d["SKU"]).strip().lower())
+        self.count = len(self.known_urls)
+        self.pending = max(self.pending, 1)
+        return len(rows)
+
     def waiting_rows(self):
         """Rows that are not in Shopify yet (no product ID)."""
         return [r for r, d in self.rows()
